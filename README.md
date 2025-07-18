@@ -8,6 +8,8 @@ The app is designed for localhost use and single-server setups.
 
 **NB** the _dad_ can of course also be a mom. 👩‍💻 The pun is less effective that way though.
 
+![Screenshot](screenshot.png "Screenshot")
+
 ## Features
 
 - 🔍 Fuzzy search for items and effects
