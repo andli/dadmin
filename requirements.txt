@@ -1,0 +1,4 @@
+mcrcon 
+fuzzywuzzy 
+python-Levenshtein
+ttkbootstrap
