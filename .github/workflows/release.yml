@@ -28,7 +28,7 @@ jobs:
           mkdir dadmin-dist
           copy dist\\dadmin.exe dadmin-dist\\dadmin.exe
           copy README.md dadmin-dist\\
-          copy server_config.txt dadmin-dist\\server_config-example.txt
+          copy server_config-example.txt dadmin-dist\\
           xcopy data dadmin-dist\\data /E /I
 
       - name: Create ZIP archive
