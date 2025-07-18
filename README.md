@@ -1,6 +1,6 @@
 # dadmin — A Minecraft RCON Admin GUI
 
-A minimalist dark-themed desktop GUI for administering a local Minecraft server via RCON. Helping you, the (d)admin, not having to type `/give` all the bloody time.
+A minimalist dark-themed desktop GUI for administering a local Minecraft server via RCON. Helping you, the (d)admin, play survival mode with your kids without having to type `/give` all the bloody time. 😅
 
 Right now the app supports giving _items_ and applying _effects_.
 
