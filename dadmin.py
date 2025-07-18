@@ -1,4 +1,5 @@
 import os, json, re
+import tkinter as tk
 import ttkbootstrap as tb
 from ttkbootstrap.constants import *
 from ttkbootstrap.widgets import Treeview
@@ -209,5 +210,11 @@ if __name__ == "__main__":
 
     # Launch GUI
     root = tb.Window(themename="darkly")  # or "superhero", "cyborg", etc.
+
+    if sys.platform.startswith("win"):
+        root.iconbitmap(os.path.abspath("icon.ico"))
+    else:
+        root.iconphoto(False, tk.PhotoImage(file="icon.png"))
+
     app = MinecraftAdminApp(root)
     root.mainloop()
