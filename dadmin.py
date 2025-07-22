@@ -19,7 +19,7 @@ def load_config():
 
 def load_data():
     data = {}
-    for typename in ["item", "effect"]:  # Add more types here as needed
+    for typename in ["item", "effect", "enchantment"]:  # Add more types here as needed
         filename = f"{typename}s.json"
         path = os.path.join("data", filename)
         try:
