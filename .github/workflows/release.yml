@@ -10,7 +10,19 @@ permissions:
 
 jobs:
   build:
-    runs-on: windows-latest
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            platform: windows
+            ext: .exe
+          - os: ubuntu-latest
+            platform: linux
+            ext: ""
+          - os: macos-latest
+            platform: macos-arm64
+            ext: ""
 
     steps:
       - uses: actions/checkout@v3
@@ -25,22 +37,39 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt pyinstaller
 
-      - name: Build executable
+      - name: Build executable (Windows)
+        if: matrix.os == 'windows-latest'
         run: |
           pyinstaller dadmin.py --onefile --noconsole --icon icon.ico
           mkdir dadmin-dist
-          copy dist\\dadmin.exe dadmin-dist\\dadmin.exe
-          copy README.md dadmin-dist\\
-          copy server_config-example.txt dadmin-dist\\
-          xcopy data dadmin-dist\\data /E /I
+          copy dist\dadmin.exe dadmin-dist\dadmin.exe
+          copy README.md dadmin-dist\
+          copy server_config-example.txt dadmin-dist\
+          xcopy data dadmin-dist\data /E /I
 
-      - name: Create ZIP archive
+      - name: Build executable (Unix)
+        if: matrix.os != 'windows-latest'
         run: |
-          powershell Compress-Archive -Path dadmin-dist\\* -DestinationPath dadmin-release.zip
+          pyinstaller dadmin.py --onefile --noconsole
+          mkdir -p dadmin-dist
+          cp dist/dadmin dadmin-dist/dadmin${{ matrix.ext }}
+          cp README.md dadmin-dist/
+          cp server_config-example.txt dadmin-dist/
+          cp -r data dadmin-dist/
+
+      - name: Create ZIP archive (Windows)
+        if: matrix.os == 'windows-latest'
+        run: |
+          powershell Compress-Archive -Path dadmin-dist\* -DestinationPath dadmin-${{ matrix.platform }}.zip
+
+      - name: Create ZIP archive (Unix)
+        if: matrix.os != 'windows-latest'
+        run: |
+          zip -r dadmin-${{ matrix.platform }}.zip dadmin-dist/
 
       - name: Upload release to GitHub
         uses: softprops/action-gh-release@v1
         with:
-          files: dadmin-release.zip
+          files: dadmin-${{ matrix.platform }}.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
