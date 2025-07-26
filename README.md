@@ -2,7 +2,7 @@
 
 A minimalist dark-themed desktop GUI for administering a local Minecraft server via RCON. Helping you, the (d)admin, play survival mode with your kids without having to type `/give` all the bloody time. 😅
 
-Right now the app supports giving _items_ and applying _effects_.
+Right now the app supports giving _items_ (with _enchantments_) and applying _effects_.
 
 The app is designed for localhost use and single-server setups.
 
@@ -12,9 +12,10 @@ The app is designed for localhost use and single-server setups.
 
 ## Features
 
-- 🔍 Fuzzy search for items and effects
+- 🔍 Fuzzy search for items, effects and item enchantments
 - 🎮 Player selector with auto-refresh
 - 🧪 Give items or apply effects via dropdown
+- 🌍 Simple global command buttons
 
 ## Requirements
 
