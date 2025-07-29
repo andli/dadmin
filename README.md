@@ -19,15 +19,15 @@ The app is designed for localhost use and single-server setups.
 
 ## Requirements
 
-- A Minecraft server with RCON enabled (`server.properties`)
+- A Minecraft server with RCON enabled (found in `server.properties`)
 - `server_config.txt` with:
 
-## Config
+### Config
 
 ```
 host=localhost
 port=25575
-password=your_rcon_password
+password=1111 (replace with your own)
 ```
 
 ## Notes
