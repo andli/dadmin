@@ -34,3 +34,5 @@ password=1111 (replace with your own)
 
 - Item and effect data is loaded from JSON files in the `data/` directory, taken from https://github.com/PrismarineJS/minecraft-data/blob/master/data/pc/
 - If you are missing items due to a Minecraft update, just replace the corresponding `/data` files or open an issue in this repo.
+
+![Screenshot](screenshot-big.png "Screenshot on Windows")

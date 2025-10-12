@@ -688,7 +688,9 @@ if __name__ == "__main__":
                     root.iconbitmap("icon.ico")
                     root.wm_iconbitmap("icon.ico")
                 else:
-                    print(f"⚠️ Warning: Icon file not found at {icon_path} or current directory")
+                    print(
+                        f"⚠️ Warning: Icon file not found at {icon_path} or current directory"
+                    )
         else:
             icon_path = get_resource_path("icon.png")
             if os.path.exists(icon_path):
@@ -700,7 +702,9 @@ if __name__ == "__main__":
                     icon_image = tk.PhotoImage(file="icon.png")
                     root.iconphoto(False, icon_image)
                 else:
-                    print(f"⚠️ Warning: Icon file not found at {icon_path} or current directory")
+                    print(
+                        f"⚠️ Warning: Icon file not found at {icon_path} or current directory"
+                    )
     except Exception as e:
         print(f"⚠️ Warning: Could not load application icon: {e}")
         # Continue without icon - not a critical error
