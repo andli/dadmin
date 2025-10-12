@@ -666,18 +666,23 @@ if __name__ == "__main__":
     root.geometry("1000x650")  # Set initial window size for the expanded layout
     root.minsize(950, 600)  # Set minimum window size to prevent cramping
 
-    # Set application icon with error handling
+    # Set application icon with enhanced error handling
     try:
         if sys.platform.startswith("win"):
             icon_path = "icon.ico"
             if os.path.exists(icon_path):
-                root.iconbitmap(icon_path)
+                # Use absolute path and try multiple methods for better compatibility
+                abs_icon_path = os.path.abspath(icon_path)
+                root.iconbitmap(abs_icon_path)
+                # Also try the wm method for better ttkbootstrap compatibility
+                root.wm_iconbitmap(abs_icon_path)
             else:
                 print(f"⚠️ Warning: Icon file not found at {os.path.abspath(icon_path)}")
         else:
             icon_path = "icon.png"
             if os.path.exists(icon_path):
-                root.iconphoto(False, tk.PhotoImage(file=icon_path))
+                icon_image = tk.PhotoImage(file=icon_path)
+                root.iconphoto(False, icon_image)
             else:
                 print(f"⚠️ Warning: Icon file not found at {os.path.abspath(icon_path)}")
     except Exception as e:
