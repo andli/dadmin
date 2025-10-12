@@ -666,25 +666,41 @@ if __name__ == "__main__":
     root.geometry("1000x650")  # Set initial window size for the expanded layout
     root.minsize(950, 600)  # Set minimum window size to prevent cramping
 
-    # Set application icon with enhanced error handling
+    # Set application icon with PyInstaller compatibility
+    def get_resource_path(relative_path):
+        """Get absolute path to resource, works for dev and for PyInstaller"""
+        try:
+            # PyInstaller creates a temp folder and stores path in _MEIPASS
+            base_path = sys._MEIPASS
+        except Exception:
+            base_path = os.path.abspath(".")
+        return os.path.join(base_path, relative_path)
+
     try:
         if sys.platform.startswith("win"):
-            icon_path = "icon.ico"
+            icon_path = get_resource_path("icon.ico")
             if os.path.exists(icon_path):
-                # Use absolute path and try multiple methods for better compatibility
-                abs_icon_path = os.path.abspath(icon_path)
-                root.iconbitmap(abs_icon_path)
-                # Also try the wm method for better ttkbootstrap compatibility
-                root.wm_iconbitmap(abs_icon_path)
+                root.iconbitmap(icon_path)
+                root.wm_iconbitmap(icon_path)
             else:
-                print(f"⚠️ Warning: Icon file not found at {os.path.abspath(icon_path)}")
+                # Fallback: try in current directory
+                if os.path.exists("icon.ico"):
+                    root.iconbitmap("icon.ico")
+                    root.wm_iconbitmap("icon.ico")
+                else:
+                    print(f"⚠️ Warning: Icon file not found at {icon_path} or current directory")
         else:
-            icon_path = "icon.png"
+            icon_path = get_resource_path("icon.png")
             if os.path.exists(icon_path):
                 icon_image = tk.PhotoImage(file=icon_path)
                 root.iconphoto(False, icon_image)
             else:
-                print(f"⚠️ Warning: Icon file not found at {os.path.abspath(icon_path)}")
+                # Fallback: try in current directory
+                if os.path.exists("icon.png"):
+                    icon_image = tk.PhotoImage(file="icon.png")
+                    root.iconphoto(False, icon_image)
+                else:
+                    print(f"⚠️ Warning: Icon file not found at {icon_path} or current directory")
     except Exception as e:
         print(f"⚠️ Warning: Could not load application icon: {e}")
         # Continue without icon - not a critical error

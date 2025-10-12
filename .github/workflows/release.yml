@@ -40,7 +40,7 @@ jobs:
       - name: Build executable (Windows)
         if: matrix.os == 'windows-latest'
         run: |
-          pyinstaller dadmin.py --onefile --noconsole --icon icon.ico
+          pyinstaller dadmin.py --onefile --noconsole --icon icon.ico --add-data "icon.ico;." --add-data "data;data"
           mkdir dadmin-dist
           copy dist\dadmin.exe dadmin-dist\dadmin.exe
           copy README.md dadmin-dist\
@@ -82,7 +82,7 @@ jobs:
       - name: Build executable (Unix)
         if: matrix.os != 'windows-latest'
         run: |
-          pyinstaller dadmin.py --onefile --noconsole
+          pyinstaller dadmin.py --onefile --noconsole --add-data "icon.png:." --add-data "data:data"
           mkdir -p dadmin-dist
           cp dist/dadmin dadmin-dist/dadmin${{ matrix.ext }}
           cp README.md dadmin-dist/
