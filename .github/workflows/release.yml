@@ -47,6 +47,35 @@ jobs:
           copy server_config-example.txt dadmin-dist\
           xcopy data dadmin-dist\data /E /I
 
+      - name: Sign Windows executable (with certificate)
+        if: matrix.os == 'windows-latest' && env.CERTIFICATE_BASE64 != ''
+        env:
+          CERTIFICATE_BASE64: ${{ secrets.CERTIFICATE_BASE64 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.CERTIFICATE_PASSWORD }}
+        run: |
+          # Decode certificate from base64
+          $certificateBytes = [Convert]::FromBase64String($env:CERTIFICATE_BASE64)
+          [IO.File]::WriteAllBytes("certificate.pfx", $certificateBytes)
+          # Sign the executable
+          & "C:\Program Files (x86)\Windows Kits\10\bin\10.0.22621.0\x64\signtool.exe" sign /f certificate.pfx /p $env:CERTIFICATE_PASSWORD /t http://timestamp.sectigo.com /fd sha256 dadmin-dist\dadmin.exe
+          # Clean up certificate file
+          Remove-Item certificate.pfx
+        shell: pwsh
+
+      - name: Sign Windows executable (self-signed fallback)
+        if: matrix.os == 'windows-latest' && env.CERTIFICATE_BASE64 == ''
+        env:
+          CERTIFICATE_BASE64: ${{ secrets.CERTIFICATE_BASE64 }}
+        run: |
+          # Create a self-signed certificate as fallback
+          $cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject "CN=dadmin,O=Andreas Lindhé" -KeyAlgorithm RSA -KeyLength 2048 -Provider "Microsoft Enhanced RSA and AES Cryptographic Provider" -KeyExportPolicy Exportable -KeyUsage DigitalSignature -CertStoreLocation Cert:\CurrentUser\My
+          $CertPassword = ConvertTo-SecureString -String "TempPassword123!" -Force -AsPlainText
+          $FilePath = "dadmin-cert.pfx"
+          Export-PfxCertificate -Cert $cert -FilePath $FilePath -Password $CertPassword
+          # Sign the executable
+          & "C:\Program Files (x86)\Windows Kits\10\bin\10.0.22621.0\x64\signtool.exe" sign /f $FilePath /p "TempPassword123!" /t http://timestamp.sectigo.com /fd sha256 dadmin-dist\dadmin.exe
+        shell: pwsh
+
       - name: Build executable (Unix)
         if: matrix.os != 'windows-latest'
         run: |
@@ -56,6 +85,20 @@ jobs:
           cp README.md dadmin-dist/
           cp server_config-example.txt dadmin-dist/
           cp -r data dadmin-dist/
+
+      - name: Sign and notarize macOS executable
+        if: matrix.os == 'macos-latest' && env.APPLE_ID != ''
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          # Sign the executable (requires Apple Developer account)
+          codesign --force --sign "Developer ID Application: Your Name (TEAM_ID)" dadmin-dist/dadmin
+          # Create a ZIP for notarization
+          ditto -c -k --keepParent dadmin-dist dadmin-notarize.zip
+          # Submit for notarization (this is a simplified example)
+          xcrun altool --notarize-app --primary-bundle-id "com.yourname.dadmin" --username "$APPLE_ID" --password "$APPLE_PASSWORD" --file dadmin-notarize.zip
 
       - name: Create ZIP archive (Windows)
         if: matrix.os == 'windows-latest'
