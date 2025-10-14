@@ -631,16 +631,19 @@ class MinecraftAdminApp:
                     # Build enchantment NBT data
                     enchant_data = []
                     enchant_map = dict(TYPED_DATA.get("enchantment", []))
-
+                    
+                    print(f"DEBUG: Applying {len(self.selected_enchantments)} enchantments:")
                     for enchant_name, level in self.selected_enchantments:
                         # Try to resolve enchantment name
                         enchant_id = enchant_map.get(
                             enchant_name,
                             f"minecraft:{enchant_name.lower().replace(' ', '_')}",
                         )
+                        print(f"  - {enchant_name} -> {enchant_id} (level {level})")
                         enchant_data.append(f'{{id:"{enchant_id}",lvl:{level}}}')
 
                     enchantments_nbt = f"{{Enchantments:[{','.join(enchant_data)}]}}"
+                    print(f"DEBUG: NBT data: {enchantments_nbt}")
                     cmd = f"/give {player} {resolved}{enchantments_nbt} {amount}"
                 else:
                     cmd = f"/give {player} {resolved} {amount}"
@@ -649,7 +652,8 @@ class MinecraftAdminApp:
 
             print("Sending command:", cmd)
             response = self.mcr.command(cmd)
-            self.set_status("✅ Command sent", "success")
+            print("Server response:", response)
+            self.set_status(f"✅ Command sent: {response}", "success")
         except Exception as e:
             self.set_status(f"❌ {str(e)}", "danger", duration=5000)
 
