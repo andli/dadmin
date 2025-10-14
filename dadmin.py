@@ -48,6 +48,16 @@ def test_connection(host, port, timeout=5):
         return False, error_msg
 
 
+def camel_to_snake_case(name):
+    """Convert CamelCase to snake_case for Minecraft IDs"""
+    import re
+
+    # Insert underscore before uppercase letters (except the first one)
+    s1 = re.sub("(.)([A-Z][a-z]+)", r"\1_\2", name)
+    # Insert underscore before uppercase letters preceded by lowercase letters or digits
+    return re.sub("([a-z0-9])([A-Z])", r"\1_\2", s1).lower()
+
+
 def load_data():
     data = {}
     for typename in ["item", "effect", "enchantment"]:  # Add more types here as needed
@@ -56,11 +66,27 @@ def load_data():
         try:
             with open(path, "r") as f:
                 raw = json.load(f)
-                data[typename] = [
-                    (entry["displayName"], f"minecraft:{entry['name'].lower()}")
-                    for entry in raw
-                    if "name" in entry and "displayName" in entry
-                ]
+                if typename == "effect":
+                    # For effects, include type information (good/bad)
+                    data[typename] = [
+                        (
+                            entry["displayName"],
+                            f"minecraft:{camel_to_snake_case(entry['name'])}",
+                            entry.get("type", "good"),
+                        )
+                        for entry in raw
+                        if "name" in entry and "displayName" in entry
+                    ]
+                else:
+                    # For items and enchantments, keep the old format
+                    data[typename] = [
+                        (
+                            entry["displayName"],
+                            f"minecraft:{camel_to_snake_case(entry['name'])}",
+                        )
+                        for entry in raw
+                        if "name" in entry and "displayName" in entry
+                    ]
         except FileNotFoundError:
             print(f"Warning: {filename} not found.")
             data[typename] = []
@@ -249,6 +275,13 @@ class MinecraftAdminApp:
         )
         self.effect_result_tree.configure(selectmode="browse", takefocus=False)
         self.effect_result_tree.column("label", anchor="w", stretch=True, width=300)
+        # Add color tags for good/bad effects
+        self.effect_result_tree.tag_configure(
+            "good_effect", foreground="#4CAF50"
+        )  # Green for good effects
+        self.effect_result_tree.tag_configure(
+            "bad_effect", foreground="#F44336"
+        )  # Red for bad effects
         self.effect_result_tree.grid(
             row=1, column=0, columnspan=5, sticky="ew", pady=(5, 0)
         )
@@ -258,13 +291,14 @@ class MinecraftAdminApp:
         items_container = tb.Frame(main_frame)
         items_container.grid(row=1, column=0, sticky="nsew")
         items_container.grid_rowconfigure(0, weight=1)
-        items_container.grid_columnconfigure(0, weight=1)
-        items_container.grid_columnconfigure(1, weight=1)
+        # Force equal column widths with uniform configuration
+        items_container.grid_columnconfigure(0, weight=1, uniform="col")
+        items_container.grid_columnconfigure(1, weight=1, uniform="col")
 
         # Left side - Item selection
         items_frame = tb.LabelFrame(items_container, text="Give Item", padding=15)
-        items_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 5))
-        items_frame.grid_rowconfigure(1, weight=1)
+        items_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 2.5))
+        items_frame.grid_rowconfigure(2, weight=1)  # Items list is now on row 2
         items_frame.grid_columnconfigure(1, weight=1)
 
         tb.Label(items_frame, text="Item:").grid(
@@ -272,15 +306,18 @@ class MinecraftAdminApp:
         )
         self.item_search_entry = tb.Entry(items_frame)
         self.item_search_entry.grid(
-            row=0, column=1, sticky="ew", pady=(0, 5), padx=(5, 10)
+            row=0, column=1, sticky="ew", pady=(0, 5), padx=(5, 0), columnspan=3
         )
         self.item_search_entry.bind("<KeyRelease>", self.update_item_list)
 
+        # Second row for amount and checkbox
         tb.Label(items_frame, text="Amount:").grid(
-            row=0, column=2, sticky="w", pady=(0, 5), padx=(0, 5)
+            row=1, column=0, sticky="w", pady=(0, 5)
         )
         self.item_amount_entry = tb.Entry(items_frame, width=8)
-        self.item_amount_entry.grid(row=0, column=3, pady=(0, 5), padx=(0, 10))
+        self.item_amount_entry.grid(
+            row=1, column=1, sticky="w", pady=(0, 5), padx=(5, 10)
+        )
         self.item_amount_entry.insert(0, "1")
 
         # Checkbox for applying enchantments
@@ -291,7 +328,7 @@ class MinecraftAdminApp:
             variable=self.apply_enchants_var,
         )
         self.apply_enchants_check.grid(
-            row=0, column=4, sticky="w", pady=(0, 5), padx=(10, 0)
+            row=1, column=2, sticky="w", pady=(0, 5), padx=(10, 0), columnspan=2
         )
 
         # Items suggestions list
@@ -304,7 +341,7 @@ class MinecraftAdminApp:
         self.item_result_tree.configure(selectmode="browse", takefocus=False)
         self.item_result_tree.column("label", anchor="w", stretch=True, width=300)
         self.item_result_tree.grid(
-            row=1, column=0, columnspan=5, sticky="nsew", pady=(10, 10)
+            row=2, column=0, columnspan=4, sticky="nsew", pady=(10, 10)
         )
         self.item_result_tree.bind("<Double-Button-1>", self.send_item_command)
 
@@ -314,13 +351,13 @@ class MinecraftAdminApp:
             command=self.send_item_command,
             bootstyle="primary",
         )
-        self.give_item_button.grid(row=2, column=0, columnspan=5, pady=(0, 0))
+        self.give_item_button.grid(row=3, column=0, columnspan=4, pady=(0, 0))
 
         # Right side - Enchantment Manager
         enchant_frame = tb.LabelFrame(
             items_container, text="Enchantment Manager", padding=15
         )
-        enchant_frame.grid(row=0, column=1, sticky="nsew", padx=(5, 0))
+        enchant_frame.grid(row=0, column=1, sticky="nsew", padx=(2.5, 0))
 
         # Configure enchant frame grid
         enchant_frame.grid_rowconfigure(
@@ -664,15 +701,30 @@ class MinecraftAdminApp:
             return
 
         entries = TYPED_DATA.get("effect", [])
-        labels = [label for label, _ in entries]
+        # Extract labels and create a lookup for effect types
+        labels = [entry[0] for entry in entries]  # displayName
+        effect_type_map = {
+            entry[0]: entry[2] for entry in entries
+        }  # displayName -> type
 
         results = process.extractBests(
             query, labels, scorer=fuzz.partial_ratio, limit=5
         )
 
-        for label, _ in results:
-            if _ > 30:  # Only show reasonable matches
-                self.effect_result_tree.insert("", "end", values=(label,))
+        for label, score in results:
+            if score > 30:  # Only show reasonable matches
+                effect_type = effect_type_map.get(label, "good")
+                # Add visual indicators: ✅ for good effects, ❌ for bad effects
+                if effect_type == "good":
+                    display_text = f"✅ {label}"
+                    tag = "good_effect"
+                else:
+                    display_text = f"❌ {label}"
+                    tag = "bad_effect"
+
+                item_id = self.effect_result_tree.insert(
+                    "", "end", values=(display_text,), tags=(tag,)
+                )
 
     def update_item_list(self, event=None):
         """Update the item suggestions list based on search input"""
@@ -704,7 +756,9 @@ class MinecraftAdminApp:
                 self.set_status("⚠️ Please select an effect", "warning")
                 return
         else:
-            effect_name = self.effect_result_tree.item(selected[0], "values")[0]
+            display_name = self.effect_result_tree.item(selected[0], "values")[0]
+            # Remove the ✅/❌ icons from the display name
+            effect_name = display_name.replace("✅ ", "").replace("❌ ", "")
 
         player = self.player_var.get()
         duration = self.effect_duration_entry.get()
@@ -714,8 +768,14 @@ class MinecraftAdminApp:
             return
 
         # Resolve effect name to minecraft ID
-        entry_map = dict(TYPED_DATA.get("effect", []))
-        resolved = entry_map.get(effect_name, effect_name.lower().replace(" ", "_"))
+        # Create entry map from the 3-tuple format: (displayName, minecraftId, type)
+        entries = TYPED_DATA.get("effect", [])
+        entry_map = {
+            entry[0]: entry[1] for entry in entries
+        }  # displayName -> minecraftId
+        resolved = entry_map.get(
+            effect_name, f"minecraft:{effect_name.lower().replace(' ', '_')}"
+        )
 
         try:
             if self.mcr is None:
