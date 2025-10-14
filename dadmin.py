@@ -182,94 +182,158 @@ class MinecraftAdminApp:
 
     def setup_gui(self):
         # Configure root grid weights
-        self.root.grid_rowconfigure(0, weight=1)
-        self.root.grid_rowconfigure(1, weight=0)  # Bottom panel (fixed height)
-        self.root.grid_rowconfigure(2, weight=0)  # Status bar (fixed height)
+        self.root.grid_rowconfigure(0, weight=0)  # Player selection (fixed height)
+        self.root.grid_rowconfigure(1, weight=1)  # Main panels (expandable)
+        self.root.grid_rowconfigure(2, weight=0)  # Bottom panel (fixed height)
+        self.root.grid_rowconfigure(3, weight=0)  # Status bar (fixed height)
         self.root.grid_columnconfigure(0, weight=1)
 
-        # Main container for top panels
-        main_frame = tb.Frame(self.root, padding=15)
-        main_frame.grid(row=0, column=0, sticky="nsew")
+        # === PLAYER SELECTION AT TOP ===
+        player_frame = tb.LabelFrame(self.root, text="Target Player", padding=15)
+        player_frame.grid(row=0, column=0, sticky="ew", padx=15, pady=(15, 5))
+        player_frame.grid_columnconfigure(1, weight=1)
 
-        # Configure main frame grid weights
-        main_frame.grid_rowconfigure(0, weight=1)
-        main_frame.grid_columnconfigure(0, weight=1)
-        main_frame.grid_columnconfigure(1, weight=1)
-
-        # Left panel - Main controls
-        left_frame = tb.LabelFrame(main_frame, text="Commands", padding=15)
-        left_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
-
-        tb.Label(left_frame, text="Item/Effect:").grid(
-            row=0, column=0, sticky="w", pady=(0, 5)
-        )
-
-        self.search_entry = tb.Entry(left_frame)
-        self.search_entry.grid(row=0, column=1, pady=(0, 5))
-        self.search_entry.bind("<KeyRelease>", self.update_fuzzy_list)
-
-        self.type_var = tb.StringVar(value="item")
-        tb.OptionMenu(left_frame, self.type_var, "item", "item", "effect").grid(
-            row=0, column=2, pady=(0, 5)
-        )
-
-        self.result_tree = Treeview(
-            left_frame,
-            columns=("label",),
-            show="",  # ⬅️ hide column headers
-            height=5,
-            bootstyle="dark",
-        )
-        self.result_tree.configure(selectmode="browse", takefocus=False)
-        self.result_tree.column("label", anchor="w", stretch=True, width=250)
-        self.result_tree.grid(row=1, column=0, columnspan=3, sticky="we", pady=(0, 10))
-
-        tb.Label(left_frame, text="Player:").grid(
-            row=2, column=0, sticky="w", pady=(0, 5)
+        tb.Label(player_frame, text="Player:", font=("", 10, "bold")).grid(
+            row=0, column=0, sticky="w", padx=(0, 10)
         )
         self.player_box = tb.Combobox(
-            left_frame, textvariable=self.player_var, values=[]
+            player_frame, textvariable=self.player_var, values=[], width=30
         )
-        self.player_box.grid(row=2, column=1, columnspan=2, sticky="we", pady=(0, 5))
+        self.player_box.grid(row=0, column=1, sticky="ew")
 
-        tb.Label(left_frame, text="Amount/Duration:").grid(
-            row=3, column=0, sticky="w", pady=(0, 5)
+        # === MAIN CONTENT AREA ===
+        main_frame = tb.Frame(self.root, padding=15)
+        main_frame.grid(row=1, column=0, sticky="nsew")
+
+        # Configure main frame grid - two rows, effects on top, items below
+        main_frame.grid_rowconfigure(0, weight=0)  # Effects (fixed height)
+        main_frame.grid_rowconfigure(1, weight=1)  # Items + enchantments (expandable)
+        main_frame.grid_columnconfigure(0, weight=1)
+
+        # === EFFECTS SECTION ===
+        effects_frame = tb.LabelFrame(main_frame, text="Give Effect", padding=15)
+        effects_frame.grid(row=0, column=0, sticky="ew", pady=(0, 10))
+        effects_frame.grid_columnconfigure(1, weight=1)
+
+        tb.Label(effects_frame, text="Effect:").grid(
+            row=0, column=0, sticky="w", pady=(0, 5)
         )
-        self.amount_entry = tb.Entry(left_frame)
-        self.amount_entry.grid(row=3, column=1, columnspan=2, pady=(0, 5))
+        self.effect_search_entry = tb.Entry(effects_frame)
+        self.effect_search_entry.grid(
+            row=0, column=1, sticky="ew", pady=(0, 5), padx=(5, 10)
+        )
+        self.effect_search_entry.bind("<KeyRelease>", self.update_effect_list)
+
+        tb.Label(effects_frame, text="Duration (sec):").grid(
+            row=0, column=2, sticky="w", pady=(0, 5), padx=(0, 5)
+        )
+        self.effect_duration_entry = tb.Entry(effects_frame, width=10)
+        self.effect_duration_entry.grid(row=0, column=3, pady=(0, 5), padx=(0, 10))
+        self.effect_duration_entry.insert(0, "30")
+
+        self.give_effect_button = tb.Button(
+            effects_frame,
+            text="Give Effect",
+            command=self.send_effect_command,
+            bootstyle="success",
+        )
+        self.give_effect_button.grid(row=0, column=4, pady=(0, 5))
+
+        # Effects suggestions
+        self.effect_result_tree = Treeview(
+            effects_frame,
+            columns=("label",),
+            show="",
+            height=3,
+            bootstyle="dark",
+        )
+        self.effect_result_tree.configure(selectmode="browse", takefocus=False)
+        self.effect_result_tree.column("label", anchor="w", stretch=True, width=300)
+        self.effect_result_tree.grid(
+            row=1, column=0, columnspan=5, sticky="ew", pady=(5, 0)
+        )
+        self.effect_result_tree.bind("<Double-Button-1>", self.send_effect_command)
+
+        # === ITEMS SECTION (with enchantments on the right) ===
+        items_container = tb.Frame(main_frame)
+        items_container.grid(row=1, column=0, sticky="nsew")
+        items_container.grid_rowconfigure(0, weight=1)
+        items_container.grid_columnconfigure(0, weight=1)
+        items_container.grid_columnconfigure(1, weight=1)
+
+        # Left side - Item selection
+        items_frame = tb.LabelFrame(items_container, text="Give Item", padding=15)
+        items_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 5))
+        items_frame.grid_rowconfigure(1, weight=1)
+        items_frame.grid_columnconfigure(1, weight=1)
+
+        tb.Label(items_frame, text="Item:").grid(
+            row=0, column=0, sticky="w", pady=(0, 5)
+        )
+        self.item_search_entry = tb.Entry(items_frame)
+        self.item_search_entry.grid(
+            row=0, column=1, sticky="ew", pady=(0, 5), padx=(5, 10)
+        )
+        self.item_search_entry.bind("<KeyRelease>", self.update_item_list)
+
+        tb.Label(items_frame, text="Amount:").grid(
+            row=0, column=2, sticky="w", pady=(0, 5), padx=(0, 5)
+        )
+        self.item_amount_entry = tb.Entry(items_frame, width=8)
+        self.item_amount_entry.grid(row=0, column=3, pady=(0, 5), padx=(0, 10))
+        self.item_amount_entry.insert(0, "1")
 
         # Checkbox for applying enchantments
         self.apply_enchants_var = tb.BooleanVar(value=False)
         self.apply_enchants_check = tb.Checkbutton(
-            left_frame,
+            items_frame,
             text="Apply enchantments from list",
             variable=self.apply_enchants_var,
         )
         self.apply_enchants_check.grid(
-            row=4, column=0, columnspan=3, sticky="w", pady=(5, 5)
+            row=0, column=4, sticky="w", pady=(0, 5), padx=(10, 0)
         )
 
-        self.send_button = tb.Button(
-            left_frame, text="Send Command", command=self.send_command
+        # Items suggestions list
+        self.item_result_tree = Treeview(
+            items_frame,
+            columns=("label",),
+            show="",
+            bootstyle="dark",
         )
-        self.send_button.grid(row=5, column=0, columnspan=3, pady=(10, 0))
+        self.item_result_tree.configure(selectmode="browse", takefocus=False)
+        self.item_result_tree.column("label", anchor="w", stretch=True, width=300)
+        self.item_result_tree.grid(
+            row=1, column=0, columnspan=5, sticky="nsew", pady=(10, 10)
+        )
+        self.item_result_tree.bind("<Double-Button-1>", self.send_item_command)
 
-        # Right panel - Enchantment Manager
-        right_frame = tb.LabelFrame(main_frame, text="Enchantment Manager", padding=15)
-        right_frame.grid(row=0, column=1, sticky="nsew", padx=(10, 0))
+        self.give_item_button = tb.Button(
+            items_frame,
+            text="Give Item",
+            command=self.send_item_command,
+            bootstyle="primary",
+        )
+        self.give_item_button.grid(row=2, column=0, columnspan=5, pady=(0, 0))
 
-        # Configure right frame grid
-        right_frame.grid_rowconfigure(
+        # Right side - Enchantment Manager
+        enchant_frame = tb.LabelFrame(
+            items_container, text="Enchantment Manager", padding=15
+        )
+        enchant_frame.grid(row=0, column=1, sticky="nsew", padx=(5, 0))
+
+        # Configure enchant frame grid
+        enchant_frame.grid_rowconfigure(
             4, weight=1
-        )  # Make selected enchantments list expandable instead
-        right_frame.grid_columnconfigure(0, weight=1)
+        )  # Make selected enchantments list expandable
+        enchant_frame.grid_columnconfigure(0, weight=1)
 
         # Enchantment search
-        tb.Label(right_frame, text="Add Enchantment:", font=("", 10, "bold")).grid(
+        tb.Label(enchant_frame, text="Add Enchantment:", font=("", 10, "bold")).grid(
             row=0, column=0, sticky="w", pady=(0, 5)
         )
 
-        enchant_search_frame = tb.Frame(right_frame)
+        enchant_search_frame = tb.Frame(enchant_frame)
         enchant_search_frame.grid(row=1, column=0, sticky="ew", pady=(0, 10))
         enchant_search_frame.grid_columnconfigure(0, weight=1)
 
@@ -294,7 +358,7 @@ class MinecraftAdminApp:
 
         # Enchantment suggestions dropdown
         self.enchant_suggestions = Treeview(
-            right_frame,
+            enchant_frame,
             columns=("label",),
             show="",
             height=3,
@@ -311,11 +375,11 @@ class MinecraftAdminApp:
 
         # Selected enchantments list
         tb.Label(
-            right_frame, text="Selected Enchantments:", font=("", 10, "bold")
+            enchant_frame, text="Selected Enchantments:", font=("", 10, "bold")
         ).grid(row=3, column=0, sticky="w", pady=(10, 5))
 
         # Scrollable enchantments list with remove buttons
-        enchant_list_frame = tb.Frame(right_frame)
+        enchant_list_frame = tb.Frame(enchant_frame)
         enchant_list_frame.grid(row=4, column=0, sticky="nsew", pady=(0, 10))
         enchant_list_frame.grid_rowconfigure(0, weight=1)
         enchant_list_frame.grid_columnconfigure(0, weight=1)
@@ -326,16 +390,16 @@ class MinecraftAdminApp:
 
         # Clear all button
         clear_all_btn = tb.Button(
-            right_frame,
+            enchant_frame,
             text="Clear All Enchantments",
             command=self.clear_all_enchantments,
             bootstyle="danger-outline",
         )
         clear_all_btn.grid(row=5, column=0, sticky="ew", pady=(5, 0))
 
-        # Bottom panel - Server Info
+        # === BOTTOM PANEL - SERVER INFO ===
         bottom_frame = tb.LabelFrame(self.root, text="Server Info", padding=15)
-        bottom_frame.grid(row=1, column=0, sticky="ew", padx=15, pady=(0, 15))
+        bottom_frame.grid(row=2, column=0, sticky="ew", padx=15, pady=(10, 15))
         bottom_frame.grid_columnconfigure(0, weight=1)
         bottom_frame.grid_columnconfigure(1, weight=1)
         bottom_frame.grid_columnconfigure(2, weight=2)
@@ -409,7 +473,7 @@ class MinecraftAdminApp:
         self.status = tb.Label(
             self.root, text="", anchor="w", padding=(10, 2), bootstyle="dark"
         )
-        self.status.grid(row=2, column=0, sticky="we", pady=(5, 5))
+        self.status.grid(row=3, column=0, sticky="we", pady=(5, 5))
 
         # Initialize enchantment list
         self.selected_enchantments = []
@@ -591,78 +655,142 @@ class MinecraftAdminApp:
         else:
             self.set_status("⚠️ No enchantments to clear", "warning")
 
-    def update_fuzzy_list(self, event=None):
-        query = self.search_entry.get().strip()
-        self.result_tree.delete(*self.result_tree.get_children())
+    def update_effect_list(self, event=None):
+        """Update the effect suggestions list based on search input"""
+        query = self.effect_search_entry.get().strip()
+        self.effect_result_tree.delete(*self.effect_result_tree.get_children())
 
-        current_type = self.type_var.get()
-        entries = TYPED_DATA.get(current_type, [])
+        if not query:
+            return
+
+        entries = TYPED_DATA.get("effect", [])
         labels = [label for label, _ in entries]
-        entry_map = dict(entries)
 
         results = process.extractBests(
             query, labels, scorer=fuzz.partial_ratio, limit=5
         )
 
         for label, _ in results:
-            id_value = entry_map[label]
-            self.result_tree.insert("", "end", values=(label,))
+            if _ > 30:  # Only show reasonable matches
+                self.effect_result_tree.insert("", "end", values=(label,))
 
-    def send_command(self):
-        selected = self.result_tree.selection()
+    def update_item_list(self, event=None):
+        """Update the item suggestions list based on search input"""
+        query = self.item_search_entry.get().strip()
+        self.item_result_tree.delete(*self.item_result_tree.get_children())
+
+        if not query:
+            return
+
+        entries = TYPED_DATA.get("item", [])
+        labels = [label for label, _ in entries]
+
+        results = process.extractBests(
+            query, labels, scorer=fuzz.partial_ratio, limit=10
+        )
+
+        for label, _ in results:
+            if _ > 30:  # Only show reasonable matches
+                self.item_result_tree.insert("", "end", values=(label,))
+
+    def send_effect_command(self, event=None):
+        """Send an effect command to the server"""
+        # Get selected effect
+        selected = self.effect_result_tree.selection()
         if not selected:
-            selection = ""
+            # Try to use the search text directly
+            effect_name = self.effect_search_entry.get().strip()
+            if not effect_name:
+                self.set_status("⚠️ Please select an effect", "warning")
+                return
         else:
-            selection = self.result_tree.item(selected[0], "values")[0]
-        player = self.player_var.get()
-        amount = self.amount_entry.get()
+            effect_name = self.effect_result_tree.item(selected[0], "values")[0]
 
-        if not selection or not player or not amount.isdigit():
+        player = self.player_var.get()
+        duration = self.effect_duration_entry.get()
+
+        if not effect_name or not player or not duration.isdigit():
             self.set_status("⚠️ Fill all fields before sending", "warning")
             return
 
-        entry_map = dict(TYPED_DATA.get(self.type_var.get(), []))
-        resolved = entry_map.get(selection, selection)
+        # Resolve effect name to minecraft ID
+        entry_map = dict(TYPED_DATA.get("effect", []))
+        resolved = entry_map.get(effect_name, effect_name.lower().replace(" ", "_"))
 
         try:
             if self.mcr is None:
                 self.set_status("❌ No server connection", "danger", duration=3000)
                 return
 
-            if self.type_var.get() == "item":
-                # Check if we should apply enchantments
-                if self.apply_enchants_var.get() and self.selected_enchantments:
-                    # Build modern data component format
-                    print(
-                        f"DEBUG: Applying {len(self.selected_enchantments)} enchantments:"
-                    )
+            cmd = f"/effect give {player} {resolved} {duration} 0 true"
+            print("Sending effect command:", cmd)
+            response = self.mcr.command(cmd)
+            print("Server response:", response)
 
-                    component_enchants = []
-                    for enchant_name, level in self.selected_enchantments:
-                        # Clean up the enchantment name
-                        clean_name = enchant_name.lower().replace(" ", "_")
-                        # Handle common name abbreviations
-                        name_mappings = {
-                            "knoc": "knockback",
-                            "kb": "knockback",
-                            "ub": "unbreaking",
-                            "fort": "fortune",
-                            "for": "fortune",
-                        }
-                        clean_name = name_mappings.get(clean_name, clean_name)
+            self.set_status(f"✅ Effect given: {effect_name} to {player}", "success")
+        except Exception as e:
+            self.set_status(f"❌ {str(e)}", "danger", duration=5000)
 
-                        print(f"  - {enchant_name} -> {clean_name} (level {level})")
-                        component_enchants.append(f"{clean_name}:{level}")
+    def send_item_command(self, event=None):
+        """Send an item command to the server"""
+        # Get selected item
+        selected = self.item_result_tree.selection()
+        if not selected:
+            # Try to use the search text directly
+            item_name = self.item_search_entry.get().strip()
+            if not item_name:
+                self.set_status("⚠️ Please select an item", "warning")
+                return
+        else:
+            item_name = self.item_result_tree.item(selected[0], "values")[0]
 
-                    # Modern data component syntax: item[enchantments={enchant:level}]
-                    cmd = f"/give {player} {resolved}[enchantments={{{','.join(component_enchants)}}}] {amount}"
-                    print(f"DEBUG: Using data component format: {cmd}")
-                else:
-                    cmd = f"/give {player} {resolved} {amount}"
+        player = self.player_var.get()
+        amount = self.item_amount_entry.get()
+
+        if not item_name or not player or not amount.isdigit():
+            self.set_status("⚠️ Fill all fields before sending", "warning")
+            return
+
+        # Resolve item name to minecraft ID
+        entry_map = dict(TYPED_DATA.get("item", []))
+        resolved = entry_map.get(item_name, item_name.lower().replace(" ", "_"))
+
+        try:
+            if self.mcr is None:
+                self.set_status("❌ No server connection", "danger", duration=3000)
+                return
+
+            # Check if we should apply enchantments
+            if self.apply_enchants_var.get() and self.selected_enchantments:
+                # Build modern data component format
+                print(
+                    f"DEBUG: Applying {len(self.selected_enchantments)} enchantments:"
+                )
+
+                component_enchants = []
+                for enchant_name, level in self.selected_enchantments:
+                    # Clean up the enchantment name
+                    clean_name = enchant_name.lower().replace(" ", "_")
+                    # Handle common name abbreviations
+                    name_mappings = {
+                        "knoc": "knockback",
+                        "kb": "knockback",
+                        "ub": "unbreaking",
+                        "fort": "fortune",
+                        "for": "fortune",
+                    }
+                    clean_name = name_mappings.get(clean_name, clean_name)
+
+                    print(f"  - {enchant_name} -> {clean_name} (level {level})")
+                    component_enchants.append(f"{clean_name}:{level}")
+
+                # Modern data component syntax: item[enchantments={enchant:level}]
+                cmd = f"/give {player} {resolved}[enchantments={{{','.join(component_enchants)}}}] {amount}"
+                print(f"DEBUG: Using data component format: {cmd}")
             else:
-                cmd = f"/effect give {player} {resolved} {amount} 0 true"
+                cmd = f"/give {player} {resolved} {amount}"
 
-            print("Sending command:", cmd)
+            print("Sending item command:", cmd)
             response = self.mcr.command(cmd)
             print("Server response:", response)
 
@@ -682,12 +810,20 @@ class MinecraftAdminApp:
                 basic_cmd = f"/give {player} {resolved} {amount}"
                 response = self.mcr.command(basic_cmd)
                 self.set_status(
-                    f"⚠️ Item given without enchantments: {response}",
+                    f"⚠️ Item given without enchantments: {item_name} to {player}",
                     "warning",
                 )
                 return
 
-            self.set_status(f"✅ Command sent: {response}", "success")
+            enchant_text = (
+                f" with {len(self.selected_enchantments)} enchantments"
+                if self.apply_enchants_var.get() and self.selected_enchantments
+                else ""
+            )
+            self.set_status(
+                f"✅ Item given: {item_name} x{amount} to {player}{enchant_text}",
+                "success",
+            )
         except Exception as e:
             self.set_status(f"❌ {str(e)}", "danger", duration=5000)
 
@@ -701,8 +837,8 @@ class MinecraftAdminApp:
 if __name__ == "__main__":
     # Launch GUI first
     root = tb.Window(themename="darkly")  # or "superhero", "cyborg", etc.
-    root.geometry("1000x650")  # Set initial window size for the expanded layout
-    root.minsize(950, 600)  # Set minimum window size to prevent cramping
+    root.geometry("1200x700")  # Set initial window size for the new layout
+    root.minsize(1100, 650)  # Set minimum window size to prevent cramping
 
     # Set application icon with PyInstaller compatibility
     def get_resource_path(relative_path):
