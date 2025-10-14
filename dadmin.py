@@ -10,11 +10,22 @@ from fuzzywuzzy import fuzz, process
 
 # Load config
 def load_config():
-    config = {}
-    with open("server_config.txt") as f:
-        for line in f:
-            key, val = line.strip().split("=")
-            config[key] = val
+    config = {"host": "localhost", "port": "25575", "password": "1111"}
+
+    try:
+        with open("server_config.txt") as f:
+            for line in f:
+                line = line.strip()
+                if line and "=" in line:
+                    key, val = line.split("=", 1)
+                    config[key] = val
+    except FileNotFoundError:
+        print("⚠️ server_config.txt not found, using default settings")
+        print("Use the Settings button to configure your server connection")
+    except Exception as e:
+        print(f"⚠️ Error reading config: {e}")
+        print("Using default settings")
+
     return config
 
 
@@ -94,6 +105,53 @@ def load_data():
 
 
 TYPED_DATA = load_data()
+
+
+def get_minecraft_id(display_name, data_type):
+    """Helper function to get minecraft ID from display name"""
+    entries = TYPED_DATA.get(data_type, [])
+    entry_map = {entry[0]: entry[1] for entry in entries}
+    return entry_map.get(
+        display_name, f"minecraft:{display_name.lower().replace(' ', '_')}"
+    )
+
+
+def fuzzy_search_data(query, data_type, limit=10, min_score=30):
+    """Generic fuzzy search function for any data type"""
+    entries = TYPED_DATA.get(data_type, [])
+    labels = [entry[0] for entry in entries]
+
+    results = process.extractBests(
+        query, labels, scorer=fuzz.partial_ratio, limit=limit
+    )
+    return [(label, score) for label, score in results if score > min_score]
+
+
+def execute_rcon_command(
+    mcr, command, success_message="Command executed", return_response=False
+):
+    """Execute an RCON command with proper error handling"""
+    if mcr is None:
+        return False, "❌ No server connection"
+
+    try:
+        print(f"Sending command: {command}")
+        response = mcr.command(command)
+        print(f"Server response: {response}")
+
+        if return_response:
+            return True, response
+        else:
+            return True, f"✅ {success_message}"
+    except Exception as e:
+        return False, f"❌ {str(e)}"
+
+
+def validate_command_inputs(name, player, amount_or_duration):
+    """Validate common command inputs (name, player, numeric value)"""
+    if not name or not player or not amount_or_duration.isdigit():
+        return False
+    return True
 
 
 class MinecraftAdminApp:
@@ -201,6 +259,157 @@ class MinecraftAdminApp:
             print("❌ Reconnection failed")
 
         self.reconnect_btn.config(state="normal")
+
+    def save_config(self, config):
+        """Save configuration to file"""
+        try:
+            with open("server_config.txt", "w") as f:
+                for key, value in config.items():
+                    f.write(f"{key}={value}\n")
+            return True
+        except Exception as e:
+            print(f"Error saving config: {e}")
+            return False
+
+    def open_settings(self):
+        """Open the server settings dialog"""
+        settings_window = tk.Toplevel(self.root)
+        settings_window.title("Server Settings")
+        settings_window.geometry("450x350")
+        settings_window.resizable(False, False)
+        settings_window.transient(self.root)
+        settings_window.grab_set()
+
+        # Center the window
+        settings_window.update_idletasks()
+        x = (settings_window.winfo_screenwidth() // 2) - (450 // 2)
+        y = (settings_window.winfo_screenheight() // 2) - (350 // 2)
+        settings_window.geometry(f"450x350+{x}+{y}")
+
+        # Create ttkbootstrap frame
+        main_frame = tb.Frame(settings_window, padding=20)
+        main_frame.pack(fill="both", expand=True)
+
+        # Title
+        tb.Label(
+            main_frame, text="RCON Server Configuration", font=("", 14, "bold")
+        ).pack(pady=(0, 20))
+
+        # Configuration fields
+        config_frame = tb.Frame(main_frame)
+        config_frame.pack(fill="x", pady=(0, 20))
+
+        # Host
+        tb.Label(config_frame, text="Host:").grid(row=0, column=0, sticky="w", pady=5)
+        host_var = tb.StringVar(value=self.config.get("host", "localhost"))
+        host_entry = tb.Entry(config_frame, textvariable=host_var, width=30)
+        host_entry.grid(row=0, column=1, sticky="ew", padx=(10, 0), pady=5)
+
+        # Port
+        tb.Label(config_frame, text="Port:").grid(row=1, column=0, sticky="w", pady=5)
+        port_var = tb.StringVar(value=self.config.get("port", "25575"))
+        port_entry = tb.Entry(config_frame, textvariable=port_var, width=30)
+        port_entry.grid(row=1, column=1, sticky="ew", padx=(10, 0), pady=5)
+
+        # Password
+        tb.Label(config_frame, text="Password:").grid(
+            row=2, column=0, sticky="w", pady=5
+        )
+        password_var = tb.StringVar(value=self.config.get("password", ""))
+        password_entry = tb.Entry(
+            config_frame, textvariable=password_var, show="*", width=30
+        )
+        password_entry.grid(row=2, column=1, sticky="ew", padx=(10, 0), pady=5)
+
+        config_frame.grid_columnconfigure(1, weight=1)
+
+        # Info text
+        info_text = (
+            "These settings correspond to your server.properties file:\n\n"
+            "enable-rcon=true\n"
+            "rcon.port=25575\n"
+            "rcon.password=your_password\n\n"
+            "Make sure to restart your server after changing RCON settings."
+        )
+        info_label = tb.Label(
+            main_frame,
+            text=info_text,
+            justify="left",
+            foreground="#888888",
+            font=("", 9),
+            wraplength=400,
+        )
+        info_label.pack(fill="x", pady=(0, 20))
+
+        # Buttons
+        button_frame = tb.Frame(main_frame)
+        button_frame.pack(fill="x")
+
+        def test_connection():
+            """Test the connection with current settings"""
+            temp_config = {
+                "host": host_var.get().strip(),
+                "port": port_var.get().strip(),
+                "password": password_var.get(),
+            }
+
+            if not temp_config["host"] or not temp_config["port"]:
+                messagebox.showerror("Error", "Host and Port are required!")
+                return
+
+            try:
+                port_num = int(temp_config["port"])
+            except ValueError:
+                messagebox.showerror("Error", "Port must be a number!")
+                return
+
+            # Test connection
+            can_connect, test_msg = test_connection(temp_config["host"], port_num)
+            if can_connect:
+                messagebox.showinfo("Connection Test", f"✅ {test_msg}")
+            else:
+                messagebox.showerror("Connection Test", f"❌ {test_msg}")
+
+        def save_and_close():
+            """Save settings and close dialog"""
+            new_config = {
+                "host": host_var.get().strip(),
+                "port": port_var.get().strip(),
+                "password": password_var.get(),
+            }
+
+            if not new_config["host"] or not new_config["port"]:
+                messagebox.showerror("Error", "Host and Port are required!")
+                return
+
+            try:
+                int(new_config["port"])
+            except ValueError:
+                messagebox.showerror("Error", "Port must be a number!")
+                return
+
+            if self.save_config(new_config):
+                self.config = new_config
+                messagebox.showinfo("Settings", "Settings saved successfully!")
+                settings_window.destroy()
+            else:
+                messagebox.showerror("Error", "Failed to save settings!")
+
+        tb.Button(
+            button_frame,
+            text="Test Connection",
+            command=test_connection,
+            bootstyle="info",
+        ).pack(side="left", padx=(0, 10))
+        tb.Button(
+            button_frame, text="Save", command=save_and_close, bootstyle="success"
+        ).pack(side="left", padx=(0, 10))
+        tb.Button(
+            button_frame,
+            text="Cancel",
+            command=settings_window.destroy,
+            bootstyle="secondary",
+        ).pack(side="left")
 
     def schedule_player_refresh(self):
         self.update_players()
@@ -470,6 +679,15 @@ class MinecraftAdminApp:
         )
         self.reconnect_btn.grid(row=0, column=2, sticky="w", padx=(10, 0))
 
+        # Add settings button
+        self.settings_btn = tb.Button(
+            status_frame,
+            text="Settings",
+            command=self.open_settings,
+            bootstyle="secondary-outline",
+        )
+        self.settings_btn.grid(row=0, column=3, sticky="w", padx=(5, 0))
+
         # Quick commands
         quick_frame = tb.Frame(bottom_frame)
         quick_frame.grid(row=0, column=1, sticky="ew", padx=(20, 0))
@@ -528,7 +746,18 @@ class MinecraftAdminApp:
                     self.players_display.config(text="No Connection")
                 return
 
-            resp = self.mcr.command("list")
+            success, resp = execute_rcon_command(
+                self.mcr, "list", "Player list retrieved", return_response=True
+            )
+            if not success:
+                # Handle connection error gracefully
+                if hasattr(self, "server_status_label"):
+                    self.server_status_label.config(
+                        text="Connection Error ❌", bootstyle="danger"
+                    )
+                if hasattr(self, "players_display"):
+                    self.players_display.config(text="Connection Error")
+                return
 
             match = re.search(r"online: (.*)", resp)
             if match:
@@ -576,16 +805,14 @@ class MinecraftAdminApp:
 
     def send_quick_command(self, command):
         """Send a quick command to the server"""
-        try:
-            if self.mcr is None:
-                self.set_status("❌ No server connection", "danger", duration=3000)
-                return
+        success, message = execute_rcon_command(
+            self.mcr, command, f"Command sent: {command}"
+        )
 
-            print(f"Sending quick command: {command}")
-            response = self.mcr.command(command)
-            self.set_status(f"✅ Command sent: {command}", "success")
-        except Exception as e:
-            self.set_status(f"❌ Error: {str(e)}", "danger", duration=5000)
+        if success:
+            self.set_status(message, "success")
+        else:
+            self.set_status(message, "danger", duration=5000)
 
     def update_enchant_suggestions(self, event=None):
         """Update the enchantment suggestions list based on search input"""
@@ -595,18 +822,9 @@ class MinecraftAdminApp:
         if not query:
             return
 
-        # Get enchantment data
-        enchantments = TYPED_DATA.get("enchantment", [])
-        labels = [label for label, _ in enchantments]
-
-        # Find fuzzy matches
-        results = process.extractBests(
-            query, labels, scorer=fuzz.partial_ratio, limit=5
-        )
-
+        results = fuzzy_search_data(query, "enchantment", limit=5)
         for label, score in results:
-            if score > 30:  # Only show reasonable matches
-                self.enchant_suggestions.insert("", "end", values=(label,))
+            self.enchant_suggestions.insert("", "end", values=(label,))
 
     def add_selected_enchantment(self, event=None):
         """Add the selected enchantment to the list"""
@@ -700,31 +918,24 @@ class MinecraftAdminApp:
         if not query:
             return
 
+        # Create effect type lookup for visual indicators
         entries = TYPED_DATA.get("effect", [])
-        # Extract labels and create a lookup for effect types
-        labels = [entry[0] for entry in entries]  # displayName
-        effect_type_map = {
-            entry[0]: entry[2] for entry in entries
-        }  # displayName -> type
+        effect_type_map = {entry[0]: entry[2] for entry in entries}
 
-        results = process.extractBests(
-            query, labels, scorer=fuzz.partial_ratio, limit=5
-        )
-
+        results = fuzzy_search_data(query, "effect", limit=5)
         for label, score in results:
-            if score > 30:  # Only show reasonable matches
-                effect_type = effect_type_map.get(label, "good")
-                # Add visual indicators: ✅ for good effects, ❌ for bad effects
-                if effect_type == "good":
-                    display_text = f"✅ {label}"
-                    tag = "good_effect"
-                else:
-                    display_text = f"❌ {label}"
-                    tag = "bad_effect"
+            effect_type = effect_type_map.get(label, "good")
+            # Add visual indicators: ✅ for good effects, ❌ for bad effects
+            if effect_type == "good":
+                display_text = f"✅ {label}"
+                tag = "good_effect"
+            else:
+                display_text = f"❌ {label}"
+                tag = "bad_effect"
 
-                item_id = self.effect_result_tree.insert(
-                    "", "end", values=(display_text,), tags=(tag,)
-                )
+            self.effect_result_tree.insert(
+                "", "end", values=(display_text,), tags=(tag,)
+            )
 
     def update_item_list(self, event=None):
         """Update the item suggestions list based on search input"""
@@ -734,16 +945,9 @@ class MinecraftAdminApp:
         if not query:
             return
 
-        entries = TYPED_DATA.get("item", [])
-        labels = [label for label, _ in entries]
-
-        results = process.extractBests(
-            query, labels, scorer=fuzz.partial_ratio, limit=10
-        )
-
-        for label, _ in results:
-            if _ > 30:  # Only show reasonable matches
-                self.item_result_tree.insert("", "end", values=(label,))
+        results = fuzzy_search_data(query, "item", limit=10)
+        for label, score in results:
+            self.item_result_tree.insert("", "end", values=(label,))
 
     def send_effect_command(self, event=None):
         """Send an effect command to the server"""
@@ -763,33 +967,22 @@ class MinecraftAdminApp:
         player = self.player_var.get()
         duration = self.effect_duration_entry.get()
 
-        if not effect_name or not player or not duration.isdigit():
+        if not validate_command_inputs(effect_name, player, duration):
             self.set_status("⚠️ Fill all fields before sending", "warning")
             return
 
         # Resolve effect name to minecraft ID
-        # Create entry map from the 3-tuple format: (displayName, minecraftId, type)
-        entries = TYPED_DATA.get("effect", [])
-        entry_map = {
-            entry[0]: entry[1] for entry in entries
-        }  # displayName -> minecraftId
-        resolved = entry_map.get(
-            effect_name, f"minecraft:{effect_name.lower().replace(' ', '_')}"
+        resolved = get_minecraft_id(effect_name, "effect")
+
+        cmd = f"/effect give {player} {resolved} {duration} 0 true"
+        success, message = execute_rcon_command(
+            self.mcr, cmd, f"Effect given: {effect_name} to {player}"
         )
 
-        try:
-            if self.mcr is None:
-                self.set_status("❌ No server connection", "danger", duration=3000)
-                return
-
-            cmd = f"/effect give {player} {resolved} {duration} 0 true"
-            print("Sending effect command:", cmd)
-            response = self.mcr.command(cmd)
-            print("Server response:", response)
-
-            self.set_status(f"✅ Effect given: {effect_name} to {player}", "success")
-        except Exception as e:
-            self.set_status(f"❌ {str(e)}", "danger", duration=5000)
+        if success:
+            self.set_status(message, "success")
+        else:
+            self.set_status(message, "danger", duration=5000)
 
     def send_item_command(self, event=None):
         """Send an item command to the server"""
@@ -807,13 +1000,12 @@ class MinecraftAdminApp:
         player = self.player_var.get()
         amount = self.item_amount_entry.get()
 
-        if not item_name or not player or not amount.isdigit():
+        if not validate_command_inputs(item_name, player, amount):
             self.set_status("⚠️ Fill all fields before sending", "warning")
             return
 
         # Resolve item name to minecraft ID
-        entry_map = dict(TYPED_DATA.get("item", []))
-        resolved = entry_map.get(item_name, item_name.lower().replace(" ", "_"))
+        resolved = get_minecraft_id(item_name, "item")
 
         try:
             if self.mcr is None:
@@ -829,18 +1021,9 @@ class MinecraftAdminApp:
 
                 component_enchants = []
                 for enchant_name, level in self.selected_enchantments:
-                    # Clean up the enchantment name
-                    clean_name = enchant_name.lower().replace(" ", "_")
-                    # Handle common name abbreviations
-                    name_mappings = {
-                        "knoc": "knockback",
-                        "kb": "knockback",
-                        "ub": "unbreaking",
-                        "fort": "fortune",
-                        "for": "fortune",
-                    }
-                    clean_name = name_mappings.get(clean_name, clean_name)
-
+                    # Get minecraft ID and remove 'minecraft:' prefix for component format
+                    minecraft_id = get_minecraft_id(enchant_name, "enchantment")
+                    clean_name = minecraft_id.replace("minecraft:", "")
                     print(f"  - {enchant_name} -> {clean_name} (level {level})")
                     component_enchants.append(f"{clean_name}:{level}")
 
@@ -850,9 +1033,12 @@ class MinecraftAdminApp:
             else:
                 cmd = f"/give {player} {resolved} {amount}"
 
-            print("Sending item command:", cmd)
-            response = self.mcr.command(cmd)
-            print("Server response:", response)
+            success, response = execute_rcon_command(
+                self.mcr, cmd, "Item command sent", return_response=True
+            )
+            if not success:
+                self.set_status(response, "danger", duration=5000)
+                return
 
             # Simple fallback: if data component format failed, try without enchantments
             if (
@@ -868,7 +1054,15 @@ class MinecraftAdminApp:
                     "DEBUG: Data component format failed, giving item without enchantments..."
                 )
                 basic_cmd = f"/give {player} {resolved} {amount}"
-                response = self.mcr.command(basic_cmd)
+                success, response = execute_rcon_command(
+                    self.mcr,
+                    basic_cmd,
+                    "Item given without enchantments",
+                    return_response=True,
+                )
+                if not success:
+                    self.set_status(response, "danger", duration=5000)
+                    return
                 self.set_status(
                     f"⚠️ Item given without enchantments: {item_name} to {player}",
                     "warning",
