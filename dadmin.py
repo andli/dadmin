@@ -645,7 +645,7 @@ class MinecraftAdminApp:
                             name_mappings = {
                                 "knoc": "knockback",
                                 "kb": "knockback",
-                                "ub": "unbreaking", 
+                                "ub": "unbreaking",
                                 "fort": "fortune",
                                 "for": "fortune",  # Fix for truncated fortune
                             }
@@ -658,9 +658,9 @@ class MinecraftAdminApp:
 
                     enchantments_nbt = f"{{Enchantments:[{','.join(enchant_data)}]}}"
                     print(f"DEBUG: NBT data: {enchantments_nbt}")
-                    # Try modern 1.13+ syntax with square brackets
-                    cmd = f"/give {player} {resolved}[{enchantments_nbt}] {amount}"
-                    print(f"DEBUG: Trying modern syntax: {cmd}")
+                    # Try legacy format first (more universally supported)
+                    cmd = f"/give {player} {resolved} {enchantments_nbt} {amount}"
+                    print(f"DEBUG: Trying legacy syntax: {cmd}")
                 else:
                     cmd = f"/give {player} {resolved} {amount}"
             else:
@@ -669,24 +669,40 @@ class MinecraftAdminApp:
             print("Sending command:", cmd)
             response = self.mcr.command(cmd)
             print("Server response:", response)
-            
+
             # Check if the command failed due to NBT syntax and try fallback
-            if ("Expected" in response or "Invalid" in response) and self.apply_enchants_var.get() and self.selected_enchantments:
-                print("DEBUG: Modern NBT syntax failed, trying legacy format...")
-                # Try legacy format with space instead of brackets
-                legacy_cmd = f"/give {player} {resolved} {enchantments_nbt} {amount}"
-                print(f"DEBUG: Trying legacy syntax: {legacy_cmd}")
-                response = self.mcr.command(legacy_cmd)
-                print("Legacy response:", response)
-                
-                if "Expected" in response or "Invalid" in response:
-                    print("DEBUG: Legacy syntax also failed, giving item without enchantments...")
+            if (
+                (
+                    "Expected" in response
+                    or "Invalid" in response
+                    or "Unknown" in response
+                )
+                and self.apply_enchants_var.get()
+                and self.selected_enchantments
+            ):
+                print("DEBUG: Legacy NBT syntax failed, trying modern format...")
+                # Try modern format with brackets
+                modern_cmd = f"/give {player} {resolved}[{enchantments_nbt}] {amount}"
+                print(f"DEBUG: Trying modern syntax: {modern_cmd}")
+                response = self.mcr.command(modern_cmd)
+                print("Modern response:", response)
+
+                if (
+                    "Expected" in response
+                    or "Invalid" in response
+                    or "Unknown" in response
+                ):
+                    print(
+                        "DEBUG: Modern syntax also failed, giving item without enchantments..."
+                    )
                     # Final fallback: give item without enchantments
                     basic_cmd = f"/give {player} {resolved} {amount}"
                     response = self.mcr.command(basic_cmd)
-                    self.set_status(f"⚠️ Item given without enchantments: {response}", "warning")
+                    self.set_status(
+                        f"⚠️ Item given without enchantments: {response}", "warning"
+                    )
                     return
-            
+
             self.set_status(f"✅ Command sent: {response}", "success")
         except Exception as e:
             self.set_status(f"❌ {str(e)}", "danger", duration=5000)
