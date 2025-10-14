@@ -628,35 +628,48 @@ class MinecraftAdminApp:
             if self.type_var.get() == "item":
                 # Check if we should apply enchantments
                 if self.apply_enchants_var.get() and self.selected_enchantments:
-                    # Build enchantment NBT data
-                    enchant_data = []
+                    # Use multiple commands: first give item, then enchant it
+                    # This is more reliable across different Minecraft versions
+                    print(
+                        f"DEBUG: Applying {len(self.selected_enchantments)} enchantments using multiple commands"
+                    )
+
+                    # First, give the base item
+                    cmd = f"/give {player} {resolved} {amount}"
+                    print("Sending base item command:", cmd)
+                    response = self.mcr.command(cmd)
+                    print("Base item response:", response)
+
+                    # Then apply each enchantment
                     enchant_map = dict(TYPED_DATA.get("enchantment", []))
-                    
-                    print(f"DEBUG: Applying {len(self.selected_enchantments)} enchantments:")
                     for enchant_name, level in self.selected_enchantments:
                         # Try to resolve enchantment name
                         enchant_id = enchant_map.get(enchant_name)
                         if not enchant_id:
-                            # Clean up the enchantment name for fallback
-                            clean_name = enchant_name.lower().replace(' ', '_')
-                            # Handle common name mappings
+                            clean_name = enchant_name.lower().replace(" ", "_")
                             name_mappings = {
-                                'knoc': 'knockback',
-                                'kb': 'knockback', 
-                                'ub': 'unbreaking',
-                                'fort': 'fortune'
+                                "knoc": "knockback",
+                                "kb": "knockback",
+                                "ub": "unbreaking",
+                                "fort": "fortune",
                             }
                             clean_name = name_mappings.get(clean_name, clean_name)
-                            enchant_id = f"minecraft:{clean_name}"
-                        
-                        print(f"  - {enchant_name} -> {enchant_id} (level {level})")
-                        # Use proper NBT format with short suffix for level
-                        enchant_data.append(f'{{id:"{enchant_id}",lvl:{level}s}}')
+                            enchant_id = clean_name  # Remove minecraft: prefix for enchant command
+                        else:
+                            # Remove minecraft: prefix if present
+                            enchant_id = enchant_id.replace("minecraft:", "")
 
-                    enchantments_nbt = f"{{Enchantments:[{','.join(enchant_data)}]}}"
-                    print(f"DEBUG: NBT data: {enchantments_nbt}")
-                    # Add proper space between item and NBT data
-                    cmd = f"/give {player} {resolved} {enchantments_nbt} {amount}"
+                        print(
+                            f"  - Applying {enchant_name} -> {enchant_id} (level {level})"
+                        )
+                        enchant_cmd = f"/enchant {player} {enchant_id} {level}"
+                        print(f"Sending enchant command: {enchant_cmd}")
+                        enchant_response = self.mcr.command(enchant_cmd)
+                        print(f"Enchant response: {enchant_response}")
+
+                    # Return early since we've already sent commands
+                    self.set_status("✅ Item given and enchantments applied", "success")
+                    return
                 else:
                     cmd = f"/give {player} {resolved} {amount}"
             else:
