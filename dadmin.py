@@ -635,16 +635,28 @@ class MinecraftAdminApp:
                     print(f"DEBUG: Applying {len(self.selected_enchantments)} enchantments:")
                     for enchant_name, level in self.selected_enchantments:
                         # Try to resolve enchantment name
-                        enchant_id = enchant_map.get(
-                            enchant_name,
-                            f"minecraft:{enchant_name.lower().replace(' ', '_')}",
-                        )
+                        enchant_id = enchant_map.get(enchant_name)
+                        if not enchant_id:
+                            # Clean up the enchantment name for fallback
+                            clean_name = enchant_name.lower().replace(' ', '_')
+                            # Handle common name mappings
+                            name_mappings = {
+                                'knoc': 'knockback',
+                                'kb': 'knockback', 
+                                'ub': 'unbreaking',
+                                'fort': 'fortune'
+                            }
+                            clean_name = name_mappings.get(clean_name, clean_name)
+                            enchant_id = f"minecraft:{clean_name}"
+                        
                         print(f"  - {enchant_name} -> {enchant_id} (level {level})")
-                        enchant_data.append(f'{{id:"{enchant_id}",lvl:{level}}}')
+                        # Use proper NBT format with short suffix for level
+                        enchant_data.append(f'{{id:"{enchant_id}",lvl:{level}s}}')
 
                     enchantments_nbt = f"{{Enchantments:[{','.join(enchant_data)}]}}"
                     print(f"DEBUG: NBT data: {enchantments_nbt}")
-                    cmd = f"/give {player} {resolved}{enchantments_nbt} {amount}"
+                    # Add proper space between item and NBT data
+                    cmd = f"/give {player} {resolved} {enchantments_nbt} {amount}"
                 else:
                     cmd = f"/give {player} {resolved} {amount}"
             else:
