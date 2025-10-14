@@ -7,10 +7,14 @@ from ttkbootstrap.widgets import Treeview
 from mcrcon import MCRcon
 from fuzzywuzzy import fuzz, process
 
+# Debug flag - set to True for verbose output
+DEBUG = False
+
 
 # Load config
 def load_config():
-    config = {"host": "localhost", "port": "25575", "password": "1111"}
+    config = {}
+    config_found = True
 
     try:
         with open("server_config.txt") as f:
@@ -20,12 +24,16 @@ def load_config():
                     key, val = line.split("=", 1)
                     config[key] = val
     except FileNotFoundError:
-        print("⚠️ server_config.txt not found, using default settings")
-        print("Use the Settings button to configure your server connection")
+        if DEBUG:
+            print("❌ server_config.txt not found!")
+            print("Please create server_config.txt with your server settings.")
+        config_found = False
     except Exception as e:
-        print(f"⚠️ Error reading config: {e}")
-        print("Using default settings")
+        if DEBUG:
+            print(f"❌ Error reading config: {e}")
+        config_found = False
 
+    config["_config_found"] = config_found
     return config
 
 
@@ -34,7 +42,8 @@ def test_connection(host, port, timeout=5):
     try:
         # Resolve hostname to IP
         ip = socket.gethostbyname(host)
-        print(f"🔍 Resolved {host} to {ip}")
+        if DEBUG:
+            print(f"🔍 Resolved {host} to {ip}")
 
         # Test TCP connection
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -43,10 +52,12 @@ def test_connection(host, port, timeout=5):
         sock.close()
 
         if result == 0:
-            print(f"✅ Port {port} is open and accepting connections on {host}")
+            if DEBUG:
+                print(f"✅ Port {port} is open and accepting connections on {host}")
             return True, "Connection successful"
         else:
-            print(f"❌ Port {port} is closed or not responding on {host}")
+            if DEBUG:
+                print(f"❌ Port {port} is closed or not responding on {host}")
             return False, f"Port {port} is not accessible"
 
     except socket.gaierror as e:
@@ -135,9 +146,11 @@ def execute_rcon_command(
         return False, "❌ No server connection"
 
     try:
-        print(f"Sending command: {command}")
+        if DEBUG:
+            print(f"Sending command: {command}")
         response = mcr.command(command)
-        print(f"Server response: {response}")
+        if DEBUG:
+            print(f"Server response: {response}")
 
         if return_response:
             return True, response
@@ -163,13 +176,41 @@ class MinecraftAdminApp:
         self.mcr = mcr or self.connect_rcon()
         self.setup_gui()
         self.current_players = []
+
+        # Show error if config file was not found
+        if not self.config.get("_config_found", True):
+            self.set_status(
+                "❌ No server_config.txt found! Click Settings to create configuration.",
+                "danger",
+                duration=15000,
+            )
+
         self.schedule_player_refresh()
 
     def connect_rcon(self):
+        # Check if config was loaded successfully
+        if not self.config.get("_config_found", False):
+            if DEBUG:
+                print("❌ Cannot connect: No configuration file found")
+            return None
+
+        # Check if required settings are present
+        required_settings = ["host", "port", "password"]
+        missing_settings = [
+            setting for setting in required_settings if not self.config.get(setting)
+        ]
+        if missing_settings:
+            if DEBUG:
+                print(
+                    f"❌ Cannot connect: Missing required settings: {', '.join(missing_settings)}"
+                )
+            return None
+
         host = self.config["host"]
         port = int(self.config["port"])
 
-        print(f"🔌 Attempting RCON connection to {host}:{port}")
+        if DEBUG:
+            print(f"🔌 Attempting RCON connection to {host}:{port}")
 
         # First, test if the port is accessible
         can_connect, test_msg = test_connection(host, port)
@@ -188,19 +229,22 @@ class MinecraftAdminApp:
                     f"• Firewall blocking the port\n"
                     f"• Server binding to different interface"
                 )
-                print(f"❌ Connection failed: {test_msg}")
+                if DEBUG:
+                    print(f"❌ Connection failed: {test_msg}")
                 messagebox.showerror("RCON Connection Failed", detailed_error)
                 return None
 
             # Port is accessible, try RCON connection
             mcr = MCRcon(host, self.config["password"], port)
             mcr.connect()
-            print("✅ RCON connection established.")
+            if DEBUG:
+                print("✅ RCON connection established.")
             return mcr
 
         except Exception as e:
-            print("❌ RCON authentication/protocol error:")
-            print(e)
+            if DEBUG:
+                print("❌ RCON authentication/protocol error:")
+                print(e)
 
             # Provide specific error guidance
             error_str = str(e).lower()
@@ -243,7 +287,8 @@ class MinecraftAdminApp:
 
     def reconnect_rcon(self):
         """Attempt to reconnect to RCON server"""
-        print("🔄 Attempting to reconnect to RCON...")
+        if DEBUG:
+            print("🔄 Attempting to reconnect to RCON...")
         self.server_status_label.config(text="Connecting... ⏳", bootstyle="warning")
         self.reconnect_btn.config(state="disabled")
 
@@ -253,10 +298,12 @@ class MinecraftAdminApp:
         # Update UI based on connection result
         if self.mcr:
             self.server_status_label.config(text="Connected ✅", bootstyle="success")
-            print("✅ Reconnection successful!")
+            if DEBUG:
+                print("✅ Reconnection successful!")
         else:
             self.server_status_label.config(text="Disconnected ❌", bootstyle="danger")
-            print("❌ Reconnection failed")
+            if DEBUG:
+                print("❌ Reconnection failed")
 
         self.reconnect_btn.config(state="normal")
 
@@ -265,7 +312,9 @@ class MinecraftAdminApp:
         try:
             with open("server_config.txt", "w") as f:
                 for key, value in config.items():
-                    f.write(f"{key}={value}\n")
+                    # Skip internal flags
+                    if not key.startswith("_"):
+                        f.write(f"{key}={value}\n")
             return True
         except Exception as e:
             print(f"Error saving config: {e}")
@@ -275,16 +324,16 @@ class MinecraftAdminApp:
         """Open the server settings dialog"""
         settings_window = tk.Toplevel(self.root)
         settings_window.title("Server Settings")
-        settings_window.geometry("450x350")
+        settings_window.geometry("500x450")
         settings_window.resizable(False, False)
         settings_window.transient(self.root)
         settings_window.grab_set()
 
         # Center the window
         settings_window.update_idletasks()
-        x = (settings_window.winfo_screenwidth() // 2) - (450 // 2)
-        y = (settings_window.winfo_screenheight() // 2) - (350 // 2)
-        settings_window.geometry(f"450x350+{x}+{y}")
+        x = (settings_window.winfo_screenwidth() // 2) - (500 // 2)
+        y = (settings_window.winfo_screenheight() // 2) - (450 // 2)
+        settings_window.geometry(f"500x450+{x}+{y}")
 
         # Create ttkbootstrap frame
         main_frame = tb.Frame(settings_window, padding=20)
@@ -292,7 +341,7 @@ class MinecraftAdminApp:
 
         # Title
         tb.Label(
-            main_frame, text="RCON Server Configuration", font=("", 14, "bold")
+            main_frame, text="Minecraft Server Configuration", font=("", 14, "bold")
         ).pack(pady=(0, 20))
 
         # Configuration fields
@@ -301,13 +350,13 @@ class MinecraftAdminApp:
 
         # Host
         tb.Label(config_frame, text="Host:").grid(row=0, column=0, sticky="w", pady=5)
-        host_var = tb.StringVar(value=self.config.get("host", "localhost"))
+        host_var = tb.StringVar(value=self.config.get("host", ""))
         host_entry = tb.Entry(config_frame, textvariable=host_var, width=30)
         host_entry.grid(row=0, column=1, sticky="ew", padx=(10, 0), pady=5)
 
         # Port
         tb.Label(config_frame, text="Port:").grid(row=1, column=0, sticky="w", pady=5)
-        port_var = tb.StringVar(value=self.config.get("port", "25575"))
+        port_var = tb.StringVar(value=self.config.get("port", ""))
         port_entry = tb.Entry(config_frame, textvariable=port_var, width=30)
         port_entry.grid(row=1, column=1, sticky="ew", padx=(10, 0), pady=5)
 
@@ -316,9 +365,7 @@ class MinecraftAdminApp:
             row=2, column=0, sticky="w", pady=5
         )
         password_var = tb.StringVar(value=self.config.get("password", ""))
-        password_entry = tb.Entry(
-            config_frame, textvariable=password_var, show="*", width=30
-        )
+        password_entry = tb.Entry(config_frame, textvariable=password_var, width=30)
         password_entry.grid(row=2, column=1, sticky="ew", padx=(10, 0), pady=5)
 
         config_frame.grid_columnconfigure(1, weight=1)
@@ -345,7 +392,7 @@ class MinecraftAdminApp:
         button_frame = tb.Frame(main_frame)
         button_frame.pack(fill="x")
 
-        def test_connection():
+        def test_connection_dialog():
             """Test the connection with current settings"""
             temp_config = {
                 "host": host_var.get().strip(),
@@ -363,12 +410,43 @@ class MinecraftAdminApp:
                 messagebox.showerror("Error", "Port must be a number!")
                 return
 
-            # Test connection
-            can_connect, test_msg = test_connection(temp_config["host"], port_num)
-            if can_connect:
-                messagebox.showinfo("Connection Test", f"✅ {test_msg}")
-            else:
-                messagebox.showerror("Connection Test", f"❌ {test_msg}")
+            # Test full RCON connection including authentication
+            try:
+                # First test if port is accessible
+                can_connect, port_msg = test_connection(temp_config["host"], port_num)
+                if not can_connect:
+                    messagebox.showerror("Connection Test", f"❌ {port_msg}")
+                    return
+
+                # Test actual RCON authentication
+                test_mcr = MCRcon(
+                    temp_config["host"], temp_config["password"], port_num
+                )
+                test_mcr.connect()
+
+                # Try a simple command to verify authentication works
+                response = test_mcr.command("list")
+                test_mcr.disconnect()
+
+                messagebox.showinfo(
+                    "Connection Test",
+                    "✅ RCON connection and authentication successful!",
+                )
+
+            except Exception as e:
+                error_msg = str(e).lower()
+                if (
+                    "authentication failed" in error_msg
+                    or "invalid password" in error_msg
+                ):
+                    messagebox.showerror(
+                        "Connection Test",
+                        "❌ RCON authentication failed!\n\nCheck your password.",
+                    )
+                else:
+                    messagebox.showerror(
+                        "Connection Test", f"❌ Connection failed:\n{str(e)}"
+                    )
 
         def save_and_close():
             """Save settings and close dialog"""
@@ -389,8 +467,34 @@ class MinecraftAdminApp:
                 return
 
             if self.save_config(new_config):
-                self.config = new_config
-                messagebox.showinfo("Settings", "Settings saved successfully!")
+                # Reload configuration from file to ensure consistency
+                self.config = load_config()
+
+                # Update status to show we're reconnecting
+                if hasattr(self, "server_status_label"):
+                    self.server_status_label.config(
+                        text="Connecting... ⏳", bootstyle="warning"
+                    )
+
+                # Attempt to reconnect with new settings
+                self.mcr = self.connect_rcon()
+
+                # Update server status based on connection result
+                if hasattr(self, "server_status_label"):
+                    if self.mcr:
+                        self.server_status_label.config(
+                            text="Connected ✅", bootstyle="success"
+                        )
+                        connection_msg = "Settings saved and connected successfully!"
+                    else:
+                        self.server_status_label.config(
+                            text="Disconnected ❌", bootstyle="danger"
+                        )
+                        connection_msg = (
+                            "Settings saved but connection failed. Check your settings."
+                        )
+
+                messagebox.showinfo("Settings", connection_msg)
                 settings_window.destroy()
             else:
                 messagebox.showerror("Error", "Failed to save settings!")
@@ -398,7 +502,7 @@ class MinecraftAdminApp:
         tb.Button(
             button_frame,
             text="Test Connection",
-            command=test_connection,
+            command=test_connection_dialog,
             bootstyle="info",
         ).pack(side="left", padx=(0, 10))
         tb.Button(
@@ -794,7 +898,8 @@ class MinecraftAdminApp:
                 self.player_var.set("")
 
         except Exception as e:
-            print("Error updating players:", e)
+            if DEBUG:
+                print("Error updating players:", e)
             # Update server status to show connection issue
             if hasattr(self, "server_status_label"):
                 self.server_status_label.config(
@@ -951,18 +1056,17 @@ class MinecraftAdminApp:
 
     def send_effect_command(self, event=None):
         """Send an effect command to the server"""
-        # Get selected effect
+        # Get selected effect - require selection from search results
         selected = self.effect_result_tree.selection()
         if not selected:
-            # Try to use the search text directly
-            effect_name = self.effect_search_entry.get().strip()
-            if not effect_name:
-                self.set_status("⚠️ Please select an effect", "warning")
-                return
-        else:
-            display_name = self.effect_result_tree.item(selected[0], "values")[0]
-            # Remove the ✅/❌ icons from the display name
-            effect_name = display_name.replace("✅ ", "").replace("❌ ", "")
+            self.set_status(
+                "⚠️ Please select an effect from the search results", "warning"
+            )
+            return
+
+        display_name = self.effect_result_tree.item(selected[0], "values")[0]
+        # Remove the ✅/❌ icons from the display name
+        effect_name = display_name.replace("✅ ", "").replace("❌ ", "")
 
         player = self.player_var.get()
         duration = self.effect_duration_entry.get()
@@ -986,16 +1090,15 @@ class MinecraftAdminApp:
 
     def send_item_command(self, event=None):
         """Send an item command to the server"""
-        # Get selected item
+        # Get selected item - require selection from search results
         selected = self.item_result_tree.selection()
         if not selected:
-            # Try to use the search text directly
-            item_name = self.item_search_entry.get().strip()
-            if not item_name:
-                self.set_status("⚠️ Please select an item", "warning")
-                return
-        else:
-            item_name = self.item_result_tree.item(selected[0], "values")[0]
+            self.set_status(
+                "⚠️ Please select an item from the search results", "warning"
+            )
+            return
+
+        item_name = self.item_result_tree.item(selected[0], "values")[0]
 
         player = self.player_var.get()
         amount = self.item_amount_entry.get()
