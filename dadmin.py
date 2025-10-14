@@ -638,7 +638,7 @@ class MinecraftAdminApp:
                             enchant_name,
                             f"minecraft:{enchant_name.lower().replace(' ', '_')}",
                         )
-                        enchant_data.append(f'{{id:"{enchant_id}",lvl:{level}s}}')
+                        enchant_data.append(f'{{id:"{enchant_id}",lvl:{level}}}')
 
                     enchantments_nbt = f"{{Enchantments:[{','.join(enchant_data)}]}}"
                     cmd = f"/give {player} {resolved}{enchantments_nbt} {amount}"
