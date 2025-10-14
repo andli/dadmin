@@ -628,48 +628,39 @@ class MinecraftAdminApp:
             if self.type_var.get() == "item":
                 # Check if we should apply enchantments
                 if self.apply_enchants_var.get() and self.selected_enchantments:
-                    # Use multiple commands: first give item, then enchant it
-                    # This is more reliable across different Minecraft versions
-                    print(
-                        f"DEBUG: Applying {len(self.selected_enchantments)} enchantments using multiple commands"
-                    )
-
-                    # First, give the base item
-                    cmd = f"/give {player} {resolved} {amount}"
-                    print("Sending base item command:", cmd)
-                    response = self.mcr.command(cmd)
-                    print("Base item response:", response)
-
-                    # Then apply each enchantment
+                    # Build enchantment NBT data with corrected syntax
+                    enchant_data = []
                     enchant_map = dict(TYPED_DATA.get("enchantment", []))
+
+                    print(
+                        f"DEBUG: Applying {len(self.selected_enchantments)} enchantments:"
+                    )
                     for enchant_name, level in self.selected_enchantments:
                         # Try to resolve enchantment name
                         enchant_id = enchant_map.get(enchant_name)
                         if not enchant_id:
+                            # Clean up the enchantment name for fallback
                             clean_name = enchant_name.lower().replace(" ", "_")
+                            # Handle common name mappings
                             name_mappings = {
                                 "knoc": "knockback",
                                 "kb": "knockback",
-                                "ub": "unbreaking",
+                                "ub": "unbreaking", 
                                 "fort": "fortune",
+                                "for": "fortune",  # Fix for truncated fortune
                             }
                             clean_name = name_mappings.get(clean_name, clean_name)
-                            enchant_id = clean_name  # Remove minecraft: prefix for enchant command
-                        else:
-                            # Remove minecraft: prefix if present
-                            enchant_id = enchant_id.replace("minecraft:", "")
+                            enchant_id = f"minecraft:{clean_name}"
 
-                        print(
-                            f"  - Applying {enchant_name} -> {enchant_id} (level {level})"
-                        )
-                        enchant_cmd = f"/enchant {player} {enchant_id} {level}"
-                        print(f"Sending enchant command: {enchant_cmd}")
-                        enchant_response = self.mcr.command(enchant_cmd)
-                        print(f"Enchant response: {enchant_response}")
+                        print(f"  - {enchant_name} -> {enchant_id} (level {level})")
+                        # Use corrected NBT format - no suffix, proper integer
+                        enchant_data.append(f'{{id:"{enchant_id}",lvl:{level}}}')
 
-                    # Return early since we've already sent commands
-                    self.set_status("✅ Item given and enchantments applied", "success")
-                    return
+                    enchantments_nbt = f"{{Enchantments:[{','.join(enchant_data)}]}}"
+                    print(f"DEBUG: NBT data: {enchantments_nbt}")
+                    # Try modern 1.13+ syntax with square brackets
+                    cmd = f"/give {player} {resolved}[{enchantments_nbt}] {amount}"
+                    print(f"DEBUG: Trying modern syntax: {cmd}")
                 else:
                     cmd = f"/give {player} {resolved} {amount}"
             else:
@@ -678,6 +669,24 @@ class MinecraftAdminApp:
             print("Sending command:", cmd)
             response = self.mcr.command(cmd)
             print("Server response:", response)
+            
+            # Check if the command failed due to NBT syntax and try fallback
+            if ("Expected" in response or "Invalid" in response) and self.apply_enchants_var.get() and self.selected_enchantments:
+                print("DEBUG: Modern NBT syntax failed, trying legacy format...")
+                # Try legacy format with space instead of brackets
+                legacy_cmd = f"/give {player} {resolved} {enchantments_nbt} {amount}"
+                print(f"DEBUG: Trying legacy syntax: {legacy_cmd}")
+                response = self.mcr.command(legacy_cmd)
+                print("Legacy response:", response)
+                
+                if "Expected" in response or "Invalid" in response:
+                    print("DEBUG: Legacy syntax also failed, giving item without enchantments...")
+                    # Final fallback: give item without enchantments
+                    basic_cmd = f"/give {player} {resolved} {amount}"
+                    response = self.mcr.command(basic_cmd)
+                    self.set_status(f"⚠️ Item given without enchantments: {response}", "warning")
+                    return
+            
             self.set_status(f"✅ Command sent: {response}", "success")
         except Exception as e:
             self.set_status(f"❌ {str(e)}", "danger", duration=5000)
