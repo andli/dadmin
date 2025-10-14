@@ -259,7 +259,9 @@ class MinecraftAdminApp:
         right_frame.grid(row=0, column=1, sticky="nsew", padx=(10, 0))
 
         # Configure right frame grid
-        right_frame.grid_rowconfigure(2, weight=1)
+        right_frame.grid_rowconfigure(
+            4, weight=1
+        )  # Make selected enchantments list expandable instead
         right_frame.grid_columnconfigure(0, weight=1)
 
         # Enchantment search
@@ -300,7 +302,9 @@ class MinecraftAdminApp:
         )
         self.enchant_suggestions.configure(selectmode="browse", takefocus=False)
         self.enchant_suggestions.column("label", anchor="w", stretch=True, width=200)
-        self.enchant_suggestions.grid(row=2, column=0, sticky="ew", pady=(0, 10))
+        self.enchant_suggestions.grid(
+            row=2, column=0, sticky="ew", pady=(0, 10), ipady=0
+        )
         self.enchant_suggestions.bind(
             "<Double-Button-1>", self.add_selected_enchantment
         )
@@ -628,39 +632,31 @@ class MinecraftAdminApp:
             if self.type_var.get() == "item":
                 # Check if we should apply enchantments
                 if self.apply_enchants_var.get() and self.selected_enchantments:
-                    # Build enchantment NBT data with corrected syntax
-                    enchant_data = []
-                    enchant_map = dict(TYPED_DATA.get("enchantment", []))
-
+                    # Build modern data component format
                     print(
                         f"DEBUG: Applying {len(self.selected_enchantments)} enchantments:"
                     )
+
+                    component_enchants = []
                     for enchant_name, level in self.selected_enchantments:
-                        # Try to resolve enchantment name
-                        enchant_id = enchant_map.get(enchant_name)
-                        if not enchant_id:
-                            # Clean up the enchantment name for fallback
-                            clean_name = enchant_name.lower().replace(" ", "_")
-                            # Handle common name mappings
-                            name_mappings = {
-                                "knoc": "knockback",
-                                "kb": "knockback",
-                                "ub": "unbreaking",
-                                "fort": "fortune",
-                                "for": "fortune",  # Fix for truncated fortune
-                            }
-                            clean_name = name_mappings.get(clean_name, clean_name)
-                            enchant_id = f"minecraft:{clean_name}"
+                        # Clean up the enchantment name
+                        clean_name = enchant_name.lower().replace(" ", "_")
+                        # Handle common name abbreviations
+                        name_mappings = {
+                            "knoc": "knockback",
+                            "kb": "knockback",
+                            "ub": "unbreaking",
+                            "fort": "fortune",
+                            "for": "fortune",
+                        }
+                        clean_name = name_mappings.get(clean_name, clean_name)
 
-                        print(f"  - {enchant_name} -> {enchant_id} (level {level})")
-                        # Use corrected NBT format - no suffix, proper integer
-                        enchant_data.append(f'{{id:"{enchant_id}",lvl:{level}}}')
+                        print(f"  - {enchant_name} -> {clean_name} (level {level})")
+                        component_enchants.append(f"{clean_name}:{level}")
 
-                    enchantments_nbt = f"{{Enchantments:[{','.join(enchant_data)}]}}"
-                    print(f"DEBUG: NBT data: {enchantments_nbt}")
-                    # Try legacy format first (more universally supported)
-                    cmd = f"/give {player} {resolved} {enchantments_nbt} {amount}"
-                    print(f"DEBUG: Trying legacy syntax: {cmd}")
+                    # Modern data component syntax: item[enchantments={enchant:level}]
+                    cmd = f"/give {player} {resolved}[enchantments={{{','.join(component_enchants)}}}] {amount}"
+                    print(f"DEBUG: Using data component format: {cmd}")
                 else:
                     cmd = f"/give {player} {resolved} {amount}"
             else:
@@ -670,7 +666,7 @@ class MinecraftAdminApp:
             response = self.mcr.command(cmd)
             print("Server response:", response)
 
-            # Check if the command failed due to NBT syntax and try fallback
+            # Simple fallback: if data component format failed, try without enchantments
             if (
                 (
                     "Expected" in response
@@ -680,28 +676,16 @@ class MinecraftAdminApp:
                 and self.apply_enchants_var.get()
                 and self.selected_enchantments
             ):
-                print("DEBUG: Legacy NBT syntax failed, trying modern format...")
-                # Try modern format with brackets
-                modern_cmd = f"/give {player} {resolved}[{enchantments_nbt}] {amount}"
-                print(f"DEBUG: Trying modern syntax: {modern_cmd}")
-                response = self.mcr.command(modern_cmd)
-                print("Modern response:", response)
-
-                if (
-                    "Expected" in response
-                    or "Invalid" in response
-                    or "Unknown" in response
-                ):
-                    print(
-                        "DEBUG: Modern syntax also failed, giving item without enchantments..."
-                    )
-                    # Final fallback: give item without enchantments
-                    basic_cmd = f"/give {player} {resolved} {amount}"
-                    response = self.mcr.command(basic_cmd)
-                    self.set_status(
-                        f"⚠️ Item given without enchantments: {response}", "warning"
-                    )
-                    return
+                print(
+                    "DEBUG: Data component format failed, giving item without enchantments..."
+                )
+                basic_cmd = f"/give {player} {resolved} {amount}"
+                response = self.mcr.command(basic_cmd)
+                self.set_status(
+                    f"⚠️ Item given without enchantments: {response}",
+                    "warning",
+                )
+                return
 
             self.set_status(f"✅ Command sent: {response}", "success")
         except Exception as e:
