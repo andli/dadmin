@@ -204,6 +204,7 @@ def validate_command_inputs(name, player, amount_or_duration):
 class MinecraftAdminApp:
     def __init__(self, root, mcr=None):
         self.player_var = tb.StringVar()
+        self.player_buttons = {}
         self.root = root
         self.root.title("Minecraft server DADmin")
         self.config = load_config()
@@ -505,7 +506,7 @@ class MinecraftAdminApp:
                 # Reload configuration from file to ensure consistency
                 self.config = load_config()
                 self.known_locations = load_locations_from_config(self.config)
-                if hasattr(self, "teleport_source_box"):
+                if hasattr(self, "teleport_dest_box"):
                     self.refresh_teleport_options()
 
                 # Update status to show we're reconnecting
@@ -573,10 +574,68 @@ class MinecraftAdminApp:
         tb.Label(player_frame, text="Player:", font=("", 10, "bold")).grid(
             row=0, column=0, sticky="w", padx=(0, 10)
         )
-        self.player_box = tb.Combobox(
-            player_frame, textvariable=self.player_var, values=[], width=30
+        self.player_buttons_frame = tb.Frame(player_frame)
+        self.player_buttons_frame.grid(row=0, column=1, sticky="ew")
+        self.render_player_buttons([])
+
+        # Teleport controls within Target Player section
+        teleport_frame = tb.LabelFrame(player_frame, text="Teleport", padding=10)
+        teleport_frame.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(10, 0))
+        teleport_frame.grid_columnconfigure(1, weight=1)
+
+        tb.Label(teleport_frame, text="To:").grid(row=0, column=0, sticky="w")
+
+        self.teleport_dest_var = tb.StringVar()
+        self.teleport_dest_box = tb.Combobox(
+            teleport_frame,
+            textvariable=self.teleport_dest_var,
+            values=[],
+            state="readonly",
+            width=24,
         )
-        self.player_box.grid(row=0, column=1, sticky="ew")
+        self.teleport_dest_box.grid(row=0, column=1, sticky="ew", padx=(5, 10))
+
+        self.teleport_button = tb.Button(
+            teleport_frame,
+            text="Teleport",
+            command=self.send_teleport_command,
+            bootstyle="info",
+        )
+        self.teleport_button.grid(row=0, column=2, sticky="w")
+
+        # XP controls within Target Player section
+        xp_frame = tb.LabelFrame(player_frame, text="Give XP", padding=10)
+        xp_frame.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(10, 0))
+        xp_frame.grid_columnconfigure(1, weight=0)
+        xp_frame.grid_columnconfigure(3, weight=0)
+
+        tb.Label(xp_frame, text="Amount:").grid(row=0, column=0, sticky="w")
+
+        self.xp_amount_var = tb.StringVar(value="5")
+        self.xp_amount_entry = tb.Entry(
+            xp_frame, textvariable=self.xp_amount_var, width=8
+        )
+        self.xp_amount_entry.grid(row=0, column=1, sticky="w", padx=(5, 10))
+
+        tb.Label(xp_frame, text="Type:").grid(row=0, column=2, sticky="w")
+        self.xp_type_var = tb.StringVar(value="Levels")
+        self.xp_type_box = tb.Combobox(
+            xp_frame,
+            textvariable=self.xp_type_var,
+            values=["Levels", "Points"],
+            state="readonly",
+            width=10,
+        )
+        self.xp_type_box.grid(row=0, column=3, sticky="w", padx=(5, 10))
+        self.xp_type_box.current(0)
+
+        self.xp_button = tb.Button(
+            xp_frame,
+            text="Give XP",
+            command=self.send_xp_command,
+            bootstyle="success-outline",
+        )
+        self.xp_button.grid(row=0, column=4, sticky="w")
 
         # === MAIN CONTENT AREA ===
         main_frame = tb.Frame(self.root, padding=15)
@@ -587,57 +646,6 @@ class MinecraftAdminApp:
         main_frame.grid_rowconfigure(1, weight=1)  # Items + enchantments (expandable)
         main_frame.grid_columnconfigure(0, weight=1)
 
-        # === EFFECTS SECTION ===
-        effects_frame = tb.LabelFrame(main_frame, text="Give Effect", padding=15)
-        effects_frame.grid(row=0, column=0, sticky="ew", pady=(0, 10))
-        effects_frame.grid_columnconfigure(1, weight=1)
-
-        tb.Label(effects_frame, text="Effect:").grid(
-            row=0, column=0, sticky="w", pady=(0, 5)
-        )
-        self.effect_search_entry = tb.Entry(effects_frame)
-        self.effect_search_entry.grid(
-            row=0, column=1, sticky="ew", pady=(0, 5), padx=(5, 10)
-        )
-        self.effect_search_entry.bind("<KeyRelease>", self.update_effect_list)
-
-        tb.Label(effects_frame, text="Duration (sec):").grid(
-            row=0, column=2, sticky="w", pady=(0, 5), padx=(0, 5)
-        )
-        self.effect_duration_entry = tb.Entry(effects_frame, width=10)
-        self.effect_duration_entry.grid(row=0, column=3, pady=(0, 5), padx=(0, 10))
-        self.effect_duration_entry.insert(0, "30")
-
-        self.give_effect_button = tb.Button(
-            effects_frame,
-            text="Give Effect",
-            command=self.send_effect_command,
-            bootstyle="success",
-        )
-        self.give_effect_button.grid(row=0, column=4, pady=(0, 5))
-
-        # Effects suggestions
-        self.effect_result_tree = Treeview(
-            effects_frame,
-            columns=("label",),
-            show="",
-            height=3,
-            bootstyle="dark",
-        )
-        self.effect_result_tree.configure(selectmode="browse", takefocus=False)
-        self.effect_result_tree.column("label", anchor="w", stretch=True, width=300)
-        # Add color tags for good/bad effects
-        self.effect_result_tree.tag_configure(
-            "good_effect", foreground="#4CAF50"
-        )  # Green for good effects
-        self.effect_result_tree.tag_configure(
-            "bad_effect", foreground="#F44336"
-        )  # Red for bad effects
-        self.effect_result_tree.grid(
-            row=1, column=0, columnspan=5, sticky="ew", pady=(5, 0)
-        )
-        self.effect_result_tree.bind("<Double-Button-1>", self.send_effect_command)
-
         # === ITEMS SECTION (with enchantments on the right) ===
         items_container = tb.Frame(main_frame)
         items_container.grid(row=1, column=0, sticky="nsew")
@@ -646,63 +654,99 @@ class MinecraftAdminApp:
         items_container.grid_columnconfigure(0, weight=1, uniform="col")
         items_container.grid_columnconfigure(1, weight=1, uniform="col")
 
-        # Left side - Item selection
-        items_frame = tb.LabelFrame(items_container, text="Give Item", padding=15)
-        items_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 2.5))
-        items_frame.grid_rowconfigure(2, weight=1)  # Items list is now on row 2
-        items_frame.grid_columnconfigure(1, weight=1)
-
-        tb.Label(items_frame, text="Item:").grid(
-            row=0, column=0, sticky="w", pady=(0, 5)
+        # Left side - Unified action panel
+        action_frame = tb.LabelFrame(
+            items_container, text="Give Item / Effect", padding=15
         )
-        self.item_search_entry = tb.Entry(items_frame)
-        self.item_search_entry.grid(
-            row=0, column=1, sticky="ew", pady=(0, 5), padx=(5, 0), columnspan=3
-        )
-        self.item_search_entry.bind("<KeyRelease>", self.update_item_list)
+        action_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 2.5))
+        action_frame.grid_rowconfigure(2, weight=1)
+        action_frame.grid_columnconfigure(1, weight=1)
 
-        # Second row for amount and checkbox
-        tb.Label(items_frame, text="Amount:").grid(
+        self.action_type_var = tb.StringVar(value="item")
+
+        type_frame = tb.Frame(action_frame)
+        type_frame.grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 5))
+        tb.Label(type_frame, text="Type:").grid(row=0, column=0, sticky="w")
+        tb.Radiobutton(
+            type_frame,
+            text="Item",
+            variable=self.action_type_var,
+            value="item",
+            command=self.on_action_type_change,
+        ).grid(row=0, column=1, sticky="w", padx=(10, 0))
+        tb.Radiobutton(
+            type_frame,
+            text="Effect",
+            variable=self.action_type_var,
+            value="effect",
+            command=self.on_action_type_change,
+        ).grid(row=0, column=2, sticky="w", padx=(10, 0))
+
+        tb.Label(action_frame, text="Search:").grid(
             row=1, column=0, sticky="w", pady=(0, 5)
         )
-        self.item_amount_entry = tb.Entry(items_frame, width=8)
-        self.item_amount_entry.grid(
-            row=1, column=1, sticky="w", pady=(0, 5), padx=(5, 10)
+        self.action_search_entry = tb.Entry(action_frame)
+        self.action_search_entry.grid(row=1, column=1, sticky="ew", pady=(0, 5))
+        self.action_search_entry.bind("<KeyRelease>", self.update_action_list)
+
+        self.action_result_tree = Treeview(
+            action_frame,
+            columns=("label",),
+            show="",
+            bootstyle="dark",
+            height=7,
         )
-        self.item_amount_entry.insert(0, "1")
+        self.action_result_tree.configure(selectmode="browse", takefocus=False)
+        self.action_result_tree.column("label", anchor="w", stretch=True, width=300)
+        self.action_result_tree.tag_configure(
+            "good_effect", foreground="#4CAF50"
+        )  # Green for good effects
+        self.action_result_tree.tag_configure(
+            "bad_effect", foreground="#F44336"
+        )  # Red for bad effects
+        self.action_result_tree.grid(
+            row=2, column=0, columnspan=2, sticky="nsew", pady=(5, 10)
+        )
+        self.action_result_tree.bind("<Double-Button-1>", self.send_action_command)
+
+        fields_frame = tb.Frame(action_frame)
+        fields_frame.grid(row=3, column=0, columnspan=2, sticky="ew", pady=(0, 10))
+        fields_frame.grid_columnconfigure(1, weight=1)
+        fields_frame.grid_columnconfigure(3, weight=1)
+
+        tb.Label(fields_frame, text="Amount:").grid(row=0, column=0, sticky="w")
+        self.action_amount_entry = tb.Entry(fields_frame, width=8)
+        self.action_amount_entry.grid(row=0, column=1, sticky="w", padx=(5, 0))
+        self.action_amount_entry.insert(0, "1")
+
+        tb.Label(fields_frame, text="Duration (sec):").grid(
+            row=0, column=2, sticky="w", padx=(15, 0)
+        )
+        self.action_duration_entry = tb.Entry(fields_frame, width=8)
+        self.action_duration_entry.grid(row=0, column=3, sticky="w", padx=(5, 0))
+        self.action_duration_entry.insert(0, "30")
 
         # Checkbox for applying enchantments
         self.apply_enchants_var = tb.BooleanVar(value=False)
         self.apply_enchants_check = tb.Checkbutton(
-            items_frame,
+            action_frame,
             text="Apply enchantments from list",
             variable=self.apply_enchants_var,
         )
         self.apply_enchants_check.grid(
-            row=1, column=2, sticky="w", pady=(0, 5), padx=(10, 0), columnspan=2
+            row=4, column=0, columnspan=2, sticky="w", pady=(0, 10)
         )
 
-        # Items suggestions list
-        self.item_result_tree = Treeview(
-            items_frame,
-            columns=("label",),
-            show="",
-            bootstyle="dark",
-        )
-        self.item_result_tree.configure(selectmode="browse", takefocus=False)
-        self.item_result_tree.column("label", anchor="w", stretch=True, width=300)
-        self.item_result_tree.grid(
-            row=2, column=0, columnspan=4, sticky="nsew", pady=(10, 10)
-        )
-        self.item_result_tree.bind("<Double-Button-1>", self.send_item_command)
-
-        self.give_item_button = tb.Button(
-            items_frame,
+        self.send_action_button = tb.Button(
+            action_frame,
             text="Give Item",
-            command=self.send_item_command,
+            command=self.send_action_command,
             bootstyle="primary",
         )
-        self.give_item_button.grid(row=3, column=0, columnspan=4, pady=(0, 0))
+        self.send_action_button.grid(row=5, column=0, columnspan=2, sticky="ew")
+
+        # Ensure the panel reflects the default type selection
+        self.on_action_type_change()
 
         # Right side - Enchantment Manager
         enchant_frame = tb.LabelFrame(
@@ -792,8 +836,6 @@ class MinecraftAdminApp:
         bottom_frame.grid_columnconfigure(1, weight=1)
         bottom_frame.grid_columnconfigure(2, weight=2)
         bottom_frame.grid_rowconfigure(0, weight=0)
-        bottom_frame.grid_rowconfigure(1, weight=0)
-        bottom_frame.grid_rowconfigure(2, weight=0)
 
         # Server status
         status_frame = tb.Frame(bottom_frame)
@@ -870,83 +912,6 @@ class MinecraftAdminApp:
         self.players_display.grid(row=0, column=1, sticky="ew", padx=(5, 0))
 
         # Teleport controls
-        teleport_frame = tb.Frame(bottom_frame)
-        teleport_frame.grid(row=1, column=0, columnspan=3, sticky="ew", pady=(12, 0))
-        teleport_frame.grid_columnconfigure(2, weight=1)
-        teleport_frame.grid_columnconfigure(4, weight=1)
-
-        tb.Label(teleport_frame, text="Teleport:", font=("", 9, "bold")).grid(
-            row=0, column=0, sticky="w", padx=(0, 10)
-        )
-        tb.Label(teleport_frame, text="From:").grid(row=0, column=1, sticky="w")
-
-        self.teleport_source_var = tb.StringVar()
-        self.teleport_source_box = tb.Combobox(
-            teleport_frame,
-            textvariable=self.teleport_source_var,
-            values=[],
-            state="readonly",
-            width=18,
-        )
-        self.teleport_source_box.grid(row=0, column=2, sticky="ew", padx=(5, 10))
-
-        tb.Label(teleport_frame, text="To:").grid(row=0, column=3, sticky="w")
-
-        self.teleport_dest_var = tb.StringVar()
-        self.teleport_dest_box = tb.Combobox(
-            teleport_frame,
-            textvariable=self.teleport_dest_var,
-            values=[],
-            state="readonly",
-            width=24,
-        )
-        self.teleport_dest_box.grid(row=0, column=4, sticky="ew", padx=(5, 10))
-
-        self.teleport_button = tb.Button(
-            teleport_frame,
-            text="Teleport",
-            command=self.send_teleport_command,
-            bootstyle="info",
-        )
-        self.teleport_button.grid(row=0, column=5, sticky="w")
-
-        # XP controls
-        xp_frame = tb.Frame(bottom_frame)
-        xp_frame.grid(row=2, column=0, columnspan=3, sticky="ew", pady=(12, 0))
-        xp_frame.grid_columnconfigure(2, weight=0)
-        xp_frame.grid_columnconfigure(3, weight=0)
-
-        tb.Label(xp_frame, text="Give XP:", font=("", 9, "bold")).grid(
-            row=0, column=0, sticky="w", padx=(0, 10)
-        )
-        tb.Label(xp_frame, text="Amount:").grid(row=0, column=1, sticky="w")
-
-        self.xp_amount_var = tb.StringVar(value="5")
-        self.xp_amount_entry = tb.Entry(
-            xp_frame, textvariable=self.xp_amount_var, width=8
-        )
-        self.xp_amount_entry.grid(row=0, column=2, sticky="w", padx=(5, 10))
-
-        tb.Label(xp_frame, text="Type:").grid(row=0, column=3, sticky="w")
-        self.xp_type_var = tb.StringVar(value="Levels")
-        self.xp_type_box = tb.Combobox(
-            xp_frame,
-            textvariable=self.xp_type_var,
-            values=["Levels", "Points"],
-            state="readonly",
-            width=10,
-        )
-        self.xp_type_box.grid(row=0, column=4, sticky="w", padx=(5, 10))
-        self.xp_type_box.current(0)
-
-        self.xp_button = tb.Button(
-            xp_frame,
-            text="Give XP",
-            command=self.send_xp_command,
-            bootstyle="success-outline",
-        )
-        self.xp_button.grid(row=0, column=5, sticky="w")
-
         # Status bar at bottom
         self.status = tb.Label(
             self.root, text="", anchor="w", padding=(10, 2), bootstyle="dark"
@@ -957,6 +922,50 @@ class MinecraftAdminApp:
         self.selected_enchantments = []
         self.enchantment_widgets = []
         self.refresh_teleport_options()
+
+    def select_player(self, player_name):
+        """Select a player via button click"""
+        self.player_var.set(player_name)
+        self.update_player_button_styles()
+        self.refresh_teleport_options()
+
+    def update_player_button_styles(self):
+        """Highlight the active player button"""
+        selected = self.player_var.get().strip()
+        for name, button in getattr(self, "player_buttons", {}).items():
+            style = "info" if name == selected else "secondary-outline"
+            button.config(bootstyle=style)
+
+    def render_player_buttons(self, players):
+        """Render player selection buttons for the current player list"""
+        if not hasattr(self, "player_buttons_frame"):
+            return
+
+        for widget in self.player_buttons_frame.winfo_children():
+            widget.destroy()
+
+        self.player_buttons = {}
+
+        if not players:
+            tb.Label(
+                self.player_buttons_frame,
+                text="No players online",
+                anchor="w",
+            ).grid(row=0, column=0, sticky="w")
+            self.update_player_button_styles()
+            return
+
+        for idx, name in enumerate(players):
+            btn = tb.Button(
+                self.player_buttons_frame,
+                text=name,
+                bootstyle="secondary-outline",
+                command=lambda n=name: self.select_player(n),
+            )
+            btn.grid(row=0, column=idx, padx=(0 if idx == 0 else 5, 0), pady=2)
+            self.player_buttons[name] = btn
+
+        self.update_player_button_styles()
 
     def update_players(self):
         try:
@@ -996,7 +1005,6 @@ class MinecraftAdminApp:
             self.current_players = players
 
             previous = self.player_var.get()
-            self.player_box["values"] = players
 
             # Update the compact player display in bottom panel
             if players:
@@ -1017,8 +1025,10 @@ class MinecraftAdminApp:
             else:
                 self.player_var.set("")
 
-            # Update teleport comboboxes with latest player list
-            if hasattr(self, "teleport_source_box"):
+            self.render_player_buttons(players)
+
+            # Update teleport destinations with latest player list
+            if hasattr(self, "teleport_dest_box"):
                 self.refresh_teleport_options()
 
         except Exception as e:
@@ -1032,22 +1042,13 @@ class MinecraftAdminApp:
             if hasattr(self, "players_display"):
                 self.players_display.config(text="Connection Error")
 
-    def refresh_teleport_options(self):
-        """Refresh teleport source and destination combobox options"""
-        if not hasattr(self, "teleport_source_box"):
+    def refresh_teleport_options(self, event=None):
+        """Refresh teleport destination options, excluding the selected player"""
+        if not hasattr(self, "teleport_dest_box"):
             return
 
         players = list(self.current_players)
-
-        # Update source player list
-        current_source = self.teleport_source_var.get()
-        self.teleport_source_box["values"] = players
-        if current_source in players:
-            self.teleport_source_var.set(current_source)
-        elif players:
-            self.teleport_source_var.set(players[0])
-        else:
-            self.teleport_source_var.set("")
+        current_player = self.player_var.get().strip()
 
         # Update destination options (players + named locations)
         current_dest = self.teleport_dest_var.get()
@@ -1055,6 +1056,8 @@ class MinecraftAdminApp:
         destination_options = []
 
         for name in players:
+            if name == current_player:
+                continue
             label = f"Player: {name}"
             destination_options.append(label)
             self.teleport_destination_map[label] = ("player", name, name)
@@ -1068,24 +1071,19 @@ class MinecraftAdminApp:
 
         if current_dest in self.teleport_destination_map:
             self.teleport_dest_var.set(current_dest)
+            return
+
+        player_options = [
+            option
+            for option in destination_options
+            if self.teleport_destination_map[option][0] == "player"
+            and self.teleport_destination_map[option][1] != current_player
+        ]
+
+        if player_options:
+            self.teleport_dest_var.set(player_options[0])
         else:
-            fallback_option = None
-            source_player = self.teleport_source_var.get()
-
-            for option in destination_options:
-                option_type, option_value, _ = self.teleport_destination_map[option]
-                if option_type == "player" and option_value == source_player:
-                    continue
-                fallback_option = option
-                break
-
-            if fallback_option is None and destination_options:
-                fallback_option = destination_options[0]
-
-            if fallback_option:
-                self.teleport_dest_var.set(fallback_option)
-            else:
-                self.teleport_dest_var.set("")
+            self.teleport_dest_var.set("")
 
     def send_teleport_command(self):
         """Teleport one player to another player or a known location"""
@@ -1093,7 +1091,7 @@ class MinecraftAdminApp:
             self.set_status("❌ No server connection", "danger", duration=5000)
             return
 
-        source_player = self.teleport_source_var.get().strip()
+        source_player = self.player_var.get().strip()
         destination_label = self.teleport_dest_var.get().strip()
 
         if not source_player:
@@ -1267,99 +1265,107 @@ class MinecraftAdminApp:
         else:
             self.set_status("⚠️ No enchantments to clear", "warning")
 
-    def update_effect_list(self, event=None):
-        """Update the effect suggestions list based on search input"""
-        query = self.effect_search_entry.get().strip()
-        self.effect_result_tree.delete(*self.effect_result_tree.get_children())
+    def on_action_type_change(self):
+        """Update UI when switching between item and effect mode"""
+        action_type = self.action_type_var.get()
 
-        if not query:
-            return
-
-        # Create effect type lookup for visual indicators
-        entries = TYPED_DATA.get("effect", [])
-        effect_type_map = {entry[0]: entry[2] for entry in entries}
-
-        results = fuzzy_search_data(query, "effect", limit=5)
-        for label, score in results:
-            effect_type = effect_type_map.get(label, "good")
-            # Add visual indicators: ✅ for good effects, ❌ for bad effects
-            if effect_type == "good":
-                display_text = f"✅ {label}"
-                tag = "good_effect"
-            else:
-                display_text = f"❌ {label}"
-                tag = "bad_effect"
-
-            self.effect_result_tree.insert(
-                "", "end", values=(display_text,), tags=(tag,)
-            )
-
-    def update_item_list(self, event=None):
-        """Update the item suggestions list based on search input"""
-        query = self.item_search_entry.get().strip()
-        self.item_result_tree.delete(*self.item_result_tree.get_children())
-
-        if not query:
-            return
-
-        results = fuzzy_search_data(query, "item", limit=10)
-        for label, score in results:
-            self.item_result_tree.insert("", "end", values=(label,))
-
-    def send_effect_command(self, event=None):
-        """Send an effect command to the server"""
-        # Get selected effect - require selection from search results
-        selected = self.effect_result_tree.selection()
-        if not selected:
-            self.set_status(
-                "⚠️ Please select an effect from the search results", "warning"
-            )
-            return
-
-        display_name = self.effect_result_tree.item(selected[0], "values")[0]
-        # Remove the ✅/❌ icons from the display name
-        effect_name = display_name.replace("✅ ", "").replace("❌ ", "")
-
-        player = self.player_var.get()
-        duration = self.effect_duration_entry.get()
-
-        if not validate_command_inputs(effect_name, player, duration):
-            self.set_status("⚠️ Fill all fields before sending", "warning")
-            return
-
-        # Resolve effect name to minecraft ID
-        resolved = get_minecraft_id(effect_name, "effect")
-
-        cmd = f"/effect give {player} {resolved} {duration} 0 true"
-        success, message = execute_rcon_command(
-            self.mcr, cmd, f"Effect given: {effect_name} to {player}"
-        )
-
-        if success:
-            self.set_status(message, "success")
+        if action_type == "item":
+            self.send_action_button.config(text="Give Item", bootstyle="primary")
+            self.apply_enchants_check.config(state="normal")
+            self.action_amount_entry.config(state="normal")
+            self.action_duration_entry.config(state="disabled")
         else:
-            self.set_status(message, "danger", duration=5000)
+            self.send_action_button.config(text="Give Effect", bootstyle="success")
+            self.apply_enchants_check.config(state="disabled")
+            self.action_amount_entry.config(state="disabled")
+            self.action_duration_entry.config(state="normal")
 
-    def send_item_command(self, event=None):
-        """Send an item command to the server"""
-        # Get selected item - require selection from search results
-        selected = self.item_result_tree.selection()
+        # Clear previous results and refresh for the selected type
+        self.action_result_tree.delete(*self.action_result_tree.get_children())
+        self.update_action_list()
+
+    def update_action_list(self, event=None):
+        """Update the suggestions list based on search input and type"""
+        if not hasattr(self, "action_result_tree"):
+            return
+
+        query = self.action_search_entry.get().strip()
+        self.action_result_tree.delete(*self.action_result_tree.get_children())
+
+        action_type = self.action_type_var.get()
+
+        if not query:
+            return
+
+        results = fuzzy_search_data(query, action_type, limit=10)
+        entries = TYPED_DATA.get(action_type, [])
+        entry_map = {entry[0]: entry for entry in entries}
+
+        for label, score in results:
+            entry = entry_map.get(label)
+            if not entry:
+                continue
+
+            if action_type == "effect":
+                effect_type = entry[2] if len(entry) > 2 else "good"
+                if effect_type == "bad":
+                    display_text = f"❌ {label}"
+                    tag = "bad_effect"
+                else:
+                    display_text = f"✅ {label}"
+                    tag = "good_effect"
+                self.action_result_tree.insert(
+                    "", "end", values=(display_text,), tags=(tag,)
+                )
+            else:
+                self.action_result_tree.insert("", "end", values=(label,))
+
+    def send_action_command(self, event=None):
+        """Send either an item or effect command based on current selection"""
+        action_type = self.action_type_var.get()
+
+        selected = self.action_result_tree.selection()
         if not selected:
             self.set_status(
-                "⚠️ Please select an item from the search results", "warning"
+                "⚠️ Please select an entry from the search results", "warning"
             )
             return
 
-        item_name = self.item_result_tree.item(selected[0], "values")[0]
+        display_value = self.action_result_tree.item(selected[0], "values")[0]
+        player = self.player_var.get().strip()
 
-        player = self.player_var.get()
-        amount = self.item_amount_entry.get()
+        if not player:
+            self.set_status("⚠️ Select a player first", "warning")
+            return
+
+        if action_type == "effect":
+            effect_name = display_value.replace("✅ ", "").replace("❌ ", "")
+            duration = self.action_duration_entry.get().strip()
+
+            if not validate_command_inputs(effect_name, player, duration):
+                self.set_status("⚠️ Fill all fields before sending", "warning")
+                return
+
+            resolved = get_minecraft_id(effect_name, "effect")
+            cmd = f"/effect give {player} {resolved} {duration} 0 true"
+            success, message = execute_rcon_command(
+                self.mcr, cmd, f"Effect given: {effect_name} to {player}"
+            )
+
+            if success:
+                self.set_status(message, "success")
+            else:
+                self.set_status(message, "danger", duration=5000)
+            return
+
+        # Item flow
+        item_name = display_value
+        amount = self.action_amount_entry.get().strip()
 
         if not validate_command_inputs(item_name, player, amount):
             self.set_status("⚠️ Fill all fields before sending", "warning")
             return
 
-        # Resolve item name to minecraft ID
         resolved = get_minecraft_id(item_name, "item")
 
         try:
@@ -1367,9 +1373,7 @@ class MinecraftAdminApp:
                 self.set_status("❌ No server connection", "danger", duration=3000)
                 return
 
-            # Check if we should apply enchantments
             if self.apply_enchants_var.get() and self.selected_enchantments:
-                # Build modern data component format
                 if DEBUG:
                     print(
                         f"DEBUG: Applying {len(self.selected_enchantments)} enchantments:"
@@ -1377,14 +1381,12 @@ class MinecraftAdminApp:
 
                 component_enchants = []
                 for enchant_name, level in self.selected_enchantments:
-                    # Get minecraft ID and remove 'minecraft:' prefix for component format
                     minecraft_id = get_minecraft_id(enchant_name, "enchantment")
                     clean_name = minecraft_id.replace("minecraft:", "")
                     if DEBUG:
                         print(f"  - {enchant_name} -> {clean_name} (level {level})")
                     component_enchants.append(f"{clean_name}:{level}")
 
-                # Modern data component syntax: item[enchantments={enchant:level}]
                 cmd = f"/give {player} {resolved}[enchantments={{{','.join(component_enchants)}}}] {amount}"
                 if DEBUG:
                     print(f"DEBUG: Using data component format: {cmd}")
@@ -1398,7 +1400,6 @@ class MinecraftAdminApp:
                 self.set_status(response, "danger", duration=5000)
                 return
 
-            # Simple fallback: if data component format failed, try without enchantments
             if (
                 (
                     "Expected" in response

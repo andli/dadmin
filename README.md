@@ -12,12 +12,11 @@ The app is designed for localhost use and single-server setups.
 
 ## Features
 
-- 🔍 Fuzzy search for items, effects and item enchantments
 - 🎮 Player selector with auto-refresh
-- 🧪 Give items or apply effects via dropdown
-- 🌍 Simple global command buttons
+- 🔍 Fuzzy search for items, effects and item enchantments
+- 🧪 Give items or apply effects
 - 🧭 Teleport players to other players or saved locations
-- ⭐ Give XP levels or points in one click
+- ⭐ Give XP levels or points
 
 ## Requirements
 
@@ -29,7 +28,7 @@ The app is designed for localhost use and single-server setups.
 ```
 host=localhost
 port=25575
-password=1111 (replace with your own)
+password=<your pw>
 ```
 
 ## Optional Teleport Locations
@@ -47,5 +46,3 @@ Use the pattern `location_<name>=x y z`. Names are converted to readable labels 
 
 - Item and effect data is loaded from JSON files in the `data/` directory, taken from https://github.com/PrismarineJS/minecraft-data/blob/master/data/pc/
 - If you are missing items due to a Minecraft update, just replace the corresponding `/data` files or open an issue in this repo.
-
-![Screenshot](screenshot-big.png "Screenshot on Windows")
