@@ -1,3 +1,5 @@
 host=localhost
 port=25575
 password=your_rcon_password_here
+location_main_spawn=0 64 0
+location_village=150 70 -45

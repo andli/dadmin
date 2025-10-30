@@ -16,6 +16,8 @@ The app is designed for localhost use and single-server setups.
 - 🎮 Player selector with auto-refresh
 - 🧪 Give items or apply effects via dropdown
 - 🌍 Simple global command buttons
+- 🧭 Teleport players to other players or saved locations
+- ⭐ Give XP levels or points in one click
 
 ## Requirements
 
@@ -29,6 +31,17 @@ host=localhost
 port=25575
 password=1111 (replace with your own)
 ```
+
+## Optional Teleport Locations
+
+Add custom destinations to the teleport dropdown by adding lines like the following to `server_config.txt`:
+
+```
+location_main_spawn=0 64 0
+location_village=150 70 -45
+```
+
+Use the pattern `location_<name>=x y z`. Names are converted to readable labels automatically (for example `location_village_square` → `Village Square`). Coordinates can be separated by spaces or commas.
 
 ## Notes
 

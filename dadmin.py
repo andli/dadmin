@@ -37,6 +37,40 @@ def load_config():
     return config
 
 
+def load_locations_from_config(config):
+    """Extract named teleport locations from the configuration"""
+    locations = {}
+
+    for key, value in config.items():
+        if not key.startswith("location_"):
+            continue
+
+        raw_name = key[len("location_") :]
+        if not raw_name:
+            continue
+
+        # Convert configuration key to human readable name
+        display_name = raw_name.replace("_", " ").title()
+
+        # Allow coordinates to be separated by space or comma
+        cleaned = value.replace(",", " ").split()
+        if len(cleaned) < 3:
+            if DEBUG:
+                print(
+                    f"⚠️ Ignoring location '{key}' - expected 3 coordinates, got '{value}'"
+                )
+            continue
+
+        coords = " ".join(cleaned[:3])
+        locations[display_name] = coords
+
+    if not locations:
+        # Provide a sensible default spawn location (overworld spawn)
+        locations["Main Spawn"] = "0 64 0"
+
+    return locations
+
+
 def test_connection(host, port, timeout=5):
     """Test if a TCP connection can be established to the given host and port"""
     try:
@@ -173,9 +207,11 @@ class MinecraftAdminApp:
         self.root = root
         self.root.title("Minecraft server DADmin")
         self.config = load_config()
+        self.known_locations = load_locations_from_config(self.config)
+        self.current_players = []
+        self.teleport_destination_map = {}
         self.mcr = mcr or self.connect_rcon()
         self.setup_gui()
-        self.current_players = []
 
         # Show error if config file was not found
         if not self.config.get("_config_found", True):
@@ -450,11 +486,10 @@ class MinecraftAdminApp:
 
         def save_and_close():
             """Save settings and close dialog"""
-            new_config = {
-                "host": host_var.get().strip(),
-                "port": port_var.get().strip(),
-                "password": password_var.get(),
-            }
+            new_config = dict(self.config)
+            new_config["host"] = host_var.get().strip()
+            new_config["port"] = port_var.get().strip()
+            new_config["password"] = password_var.get()
 
             if not new_config["host"] or not new_config["port"]:
                 messagebox.showerror("Error", "Host and Port are required!")
@@ -469,6 +504,9 @@ class MinecraftAdminApp:
             if self.save_config(new_config):
                 # Reload configuration from file to ensure consistency
                 self.config = load_config()
+                self.known_locations = load_locations_from_config(self.config)
+                if hasattr(self, "teleport_source_box"):
+                    self.refresh_teleport_options()
 
                 # Update status to show we're reconnecting
                 if hasattr(self, "server_status_label"):
@@ -753,6 +791,9 @@ class MinecraftAdminApp:
         bottom_frame.grid_columnconfigure(0, weight=1)
         bottom_frame.grid_columnconfigure(1, weight=1)
         bottom_frame.grid_columnconfigure(2, weight=2)
+        bottom_frame.grid_rowconfigure(0, weight=0)
+        bottom_frame.grid_rowconfigure(1, weight=0)
+        bottom_frame.grid_rowconfigure(2, weight=0)
 
         # Server status
         status_frame = tb.Frame(bottom_frame)
@@ -828,6 +869,84 @@ class MinecraftAdminApp:
         self.players_display = tb.Label(players_frame, text="Loading...", anchor="w")
         self.players_display.grid(row=0, column=1, sticky="ew", padx=(5, 0))
 
+        # Teleport controls
+        teleport_frame = tb.Frame(bottom_frame)
+        teleport_frame.grid(row=1, column=0, columnspan=3, sticky="ew", pady=(12, 0))
+        teleport_frame.grid_columnconfigure(2, weight=1)
+        teleport_frame.grid_columnconfigure(4, weight=1)
+
+        tb.Label(teleport_frame, text="Teleport:", font=("", 9, "bold")).grid(
+            row=0, column=0, sticky="w", padx=(0, 10)
+        )
+        tb.Label(teleport_frame, text="From:").grid(row=0, column=1, sticky="w")
+
+        self.teleport_source_var = tb.StringVar()
+        self.teleport_source_box = tb.Combobox(
+            teleport_frame,
+            textvariable=self.teleport_source_var,
+            values=[],
+            state="readonly",
+            width=18,
+        )
+        self.teleport_source_box.grid(row=0, column=2, sticky="ew", padx=(5, 10))
+
+        tb.Label(teleport_frame, text="To:").grid(row=0, column=3, sticky="w")
+
+        self.teleport_dest_var = tb.StringVar()
+        self.teleport_dest_box = tb.Combobox(
+            teleport_frame,
+            textvariable=self.teleport_dest_var,
+            values=[],
+            state="readonly",
+            width=24,
+        )
+        self.teleport_dest_box.grid(row=0, column=4, sticky="ew", padx=(5, 10))
+
+        self.teleport_button = tb.Button(
+            teleport_frame,
+            text="Teleport",
+            command=self.send_teleport_command,
+            bootstyle="info",
+        )
+        self.teleport_button.grid(row=0, column=5, sticky="w")
+
+        # XP controls
+        xp_frame = tb.Frame(bottom_frame)
+        xp_frame.grid(row=2, column=0, columnspan=3, sticky="ew", pady=(12, 0))
+        xp_frame.grid_columnconfigure(2, weight=0)
+        xp_frame.grid_columnconfigure(3, weight=0)
+
+        tb.Label(xp_frame, text="Give XP:", font=("", 9, "bold")).grid(
+            row=0, column=0, sticky="w", padx=(0, 10)
+        )
+        tb.Label(xp_frame, text="Amount:").grid(row=0, column=1, sticky="w")
+
+        self.xp_amount_var = tb.StringVar(value="5")
+        self.xp_amount_entry = tb.Entry(
+            xp_frame, textvariable=self.xp_amount_var, width=8
+        )
+        self.xp_amount_entry.grid(row=0, column=2, sticky="w", padx=(5, 10))
+
+        tb.Label(xp_frame, text="Type:").grid(row=0, column=3, sticky="w")
+        self.xp_type_var = tb.StringVar(value="Levels")
+        self.xp_type_box = tb.Combobox(
+            xp_frame,
+            textvariable=self.xp_type_var,
+            values=["Levels", "Points"],
+            state="readonly",
+            width=10,
+        )
+        self.xp_type_box.grid(row=0, column=4, sticky="w", padx=(5, 10))
+        self.xp_type_box.current(0)
+
+        self.xp_button = tb.Button(
+            xp_frame,
+            text="Give XP",
+            command=self.send_xp_command,
+            bootstyle="success-outline",
+        )
+        self.xp_button.grid(row=0, column=5, sticky="w")
+
         # Status bar at bottom
         self.status = tb.Label(
             self.root, text="", anchor="w", padding=(10, 2), bootstyle="dark"
@@ -837,6 +956,7 @@ class MinecraftAdminApp:
         # Initialize enchantment list
         self.selected_enchantments = []
         self.enchantment_widgets = []
+        self.refresh_teleport_options()
 
     def update_players(self):
         try:
@@ -897,6 +1017,10 @@ class MinecraftAdminApp:
             else:
                 self.player_var.set("")
 
+            # Update teleport comboboxes with latest player list
+            if hasattr(self, "teleport_source_box"):
+                self.refresh_teleport_options()
+
         except Exception as e:
             if DEBUG:
                 print("Error updating players:", e)
@@ -907,6 +1031,134 @@ class MinecraftAdminApp:
                 )
             if hasattr(self, "players_display"):
                 self.players_display.config(text="Connection Error")
+
+    def refresh_teleport_options(self):
+        """Refresh teleport source and destination combobox options"""
+        if not hasattr(self, "teleport_source_box"):
+            return
+
+        players = list(self.current_players)
+
+        # Update source player list
+        current_source = self.teleport_source_var.get()
+        self.teleport_source_box["values"] = players
+        if current_source in players:
+            self.teleport_source_var.set(current_source)
+        elif players:
+            self.teleport_source_var.set(players[0])
+        else:
+            self.teleport_source_var.set("")
+
+        # Update destination options (players + named locations)
+        current_dest = self.teleport_dest_var.get()
+        self.teleport_destination_map = {}
+        destination_options = []
+
+        for name in players:
+            label = f"Player: {name}"
+            destination_options.append(label)
+            self.teleport_destination_map[label] = ("player", name, name)
+
+        for display_name, coords in self.known_locations.items():
+            label = f"{display_name} ({coords})"
+            destination_options.append(label)
+            self.teleport_destination_map[label] = ("location", coords, display_name)
+
+        self.teleport_dest_box["values"] = destination_options
+
+        if current_dest in self.teleport_destination_map:
+            self.teleport_dest_var.set(current_dest)
+        else:
+            fallback_option = None
+            source_player = self.teleport_source_var.get()
+
+            for option in destination_options:
+                option_type, option_value, _ = self.teleport_destination_map[option]
+                if option_type == "player" and option_value == source_player:
+                    continue
+                fallback_option = option
+                break
+
+            if fallback_option is None and destination_options:
+                fallback_option = destination_options[0]
+
+            if fallback_option:
+                self.teleport_dest_var.set(fallback_option)
+            else:
+                self.teleport_dest_var.set("")
+
+    def send_teleport_command(self):
+        """Teleport one player to another player or a known location"""
+        if self.mcr is None:
+            self.set_status("❌ No server connection", "danger", duration=5000)
+            return
+
+        source_player = self.teleport_source_var.get().strip()
+        destination_label = self.teleport_dest_var.get().strip()
+
+        if not source_player:
+            self.set_status("⚠️ Select a player to teleport", "warning")
+            return
+
+        if destination_label not in self.teleport_destination_map:
+            self.set_status("⚠️ Select a teleport destination", "warning")
+            return
+
+        dest_type, dest_value, dest_display = self.teleport_destination_map[destination_label]
+
+        if dest_type == "player" and dest_value == source_player:
+            self.set_status(
+                "⚠️ Destination player must be different from source", "warning"
+            )
+            return
+
+        if dest_type == "player":
+            cmd = f"/tp {source_player} {dest_value}"
+            success_message = f"Teleported {source_player} to {dest_value}"
+        else:
+            cmd = f"/tp {source_player} {dest_value}"
+            success_message = f"Teleported {source_player} to {dest_display}"
+
+        success, message = execute_rcon_command(self.mcr, cmd, success_message)
+        if success:
+            self.set_status(message, "success")
+        else:
+            self.set_status(message, "danger", duration=5000)
+
+    def send_xp_command(self):
+        """Give experience points or levels to the selected player"""
+        if self.mcr is None:
+            self.set_status("❌ No server connection", "danger", duration=5000)
+            return
+
+        player = self.player_var.get().strip()
+        amount_str = self.xp_amount_var.get().strip()
+        xp_type_label = self.xp_type_var.get()
+
+        if not player:
+            self.set_status("⚠️ Select a player first", "warning")
+            return
+
+        try:
+            amount = int(amount_str)
+        except ValueError:
+            self.set_status("⚠️ XP amount must be a whole number", "warning")
+            return
+
+        if amount <= 0:
+            self.set_status("⚠️ XP amount must be greater than zero", "warning")
+            return
+
+        xp_type_value = "levels" if xp_type_label.lower().startswith("level") else "points"
+
+        cmd = f"/xp add {player} {amount} {xp_type_value}"
+        success_message = f"Gave {amount} {xp_type_value} to {player}"
+
+        success, message = execute_rcon_command(self.mcr, cmd, success_message)
+        if success:
+            self.set_status(message, "success")
+        else:
+            self.set_status(message, "danger", duration=5000)
 
     def send_quick_command(self, command):
         """Send a quick command to the server"""
@@ -1118,21 +1370,24 @@ class MinecraftAdminApp:
             # Check if we should apply enchantments
             if self.apply_enchants_var.get() and self.selected_enchantments:
                 # Build modern data component format
-                print(
-                    f"DEBUG: Applying {len(self.selected_enchantments)} enchantments:"
-                )
+                if DEBUG:
+                    print(
+                        f"DEBUG: Applying {len(self.selected_enchantments)} enchantments:"
+                    )
 
                 component_enchants = []
                 for enchant_name, level in self.selected_enchantments:
                     # Get minecraft ID and remove 'minecraft:' prefix for component format
                     minecraft_id = get_minecraft_id(enchant_name, "enchantment")
                     clean_name = minecraft_id.replace("minecraft:", "")
-                    print(f"  - {enchant_name} -> {clean_name} (level {level})")
+                    if DEBUG:
+                        print(f"  - {enchant_name} -> {clean_name} (level {level})")
                     component_enchants.append(f"{clean_name}:{level}")
 
                 # Modern data component syntax: item[enchantments={enchant:level}]
                 cmd = f"/give {player} {resolved}[enchantments={{{','.join(component_enchants)}}}] {amount}"
-                print(f"DEBUG: Using data component format: {cmd}")
+                if DEBUG:
+                    print(f"DEBUG: Using data component format: {cmd}")
             else:
                 cmd = f"/give {player} {resolved} {amount}"
 
@@ -1153,9 +1408,10 @@ class MinecraftAdminApp:
                 and self.apply_enchants_var.get()
                 and self.selected_enchantments
             ):
-                print(
-                    "DEBUG: Data component format failed, giving item without enchantments..."
-                )
+                if DEBUG:
+                    print(
+                        "DEBUG: Data component format failed, giving item without enchantments..."
+                    )
                 basic_cmd = f"/give {player} {resolved} {amount}"
                 success, response = execute_rcon_command(
                     self.mcr,
@@ -1195,7 +1451,7 @@ if __name__ == "__main__":
     # Launch GUI first
     root = tb.Window(themename="darkly")  # or "superhero", "cyborg", etc.
     root.geometry("1200x700")  # Set initial window size for the new layout
-    root.minsize(1100, 650)  # Set minimum window size to prevent cramping
+    root.minsize(900, 600)  # Allow narrower windows while keeping layout usable
 
     # Set application icon with PyInstaller compatibility
     def get_resource_path(relative_path):
