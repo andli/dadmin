@@ -837,7 +837,28 @@ class MinecraftAdminApp:
         bottom_frame.grid_columnconfigure(2, weight=2)
         bottom_frame.grid_rowconfigure(0, weight=0)
 
-        # Server status
+        bottom_frame.grid_rowconfigure(1, weight=0)
+        chat_frame = tb.Frame(bottom_frame)
+        chat_frame.grid(row=1, column=0, columnspan=3, sticky="ew", pady=(10, 0))
+        chat_frame.grid_columnconfigure(1, weight=1)
+
+        tb.Label(chat_frame, text="Chat:", font=("", 9, "bold")).grid(
+            row=0, column=0, sticky="w", padx=(0, 10)
+        )
+
+        self.chat_message_var = tb.StringVar()
+        self.chat_message_entry = tb.Entry(
+            chat_frame, textvariable=self.chat_message_var
+        )
+        self.chat_message_entry.grid(row=0, column=1, sticky="ew", padx=(0, 10))
+        self.chat_message_entry.bind("<Return>", self.send_chat_message)
+
+        tb.Button(
+            chat_frame,
+            text="Send",
+            command=self.send_chat_message,
+            bootstyle="primary-outline",
+        ).grid(row=0, column=2)
         status_frame = tb.Frame(bottom_frame)
         status_frame.grid(row=0, column=0, sticky="w")
 
@@ -1168,6 +1189,30 @@ class MinecraftAdminApp:
             self.set_status(message, "success")
         else:
             self.set_status(message, "danger", duration=5000)
+
+    def send_chat_message(self, event=None):
+        """Broadcast a message to all players via /say"""
+        message_text = self.chat_message_var.get().strip()
+
+        if not message_text:
+            self.set_status("⚠️ Enter a chat message first", "warning")
+            return
+
+        if self.mcr is None:
+            self.set_status("❌ No server connection", "danger", duration=5000)
+            return
+
+        success, response = execute_rcon_command(
+            self.mcr,
+            f"/say {message_text}",
+            f"Sent chat message: {message_text}",
+        )
+
+        if success:
+            self.chat_message_var.set("")
+            self.set_status(response, "success")
+        else:
+            self.set_status(response, "danger", duration=5000)
 
     def update_enchant_suggestions(self, event=None):
         """Update the enchantment suggestions list based on search input"""

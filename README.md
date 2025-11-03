@@ -1,6 +1,6 @@
 # dadmin — A Minecraft RCON Admin app for all operating systems
 
-A minimalist desktop app for administering a local Minecraft server via RCON. Helping you, the (d)admin, play survival mode with your kids without having to type `/give` all the bloody time. 😅
+A minimalist desktop app for administering a local Minecraft server via RCON. Works on Windows, macOS and Linux. Helping you, the (d)admin, play survival mode with your kids without having to type `/give` all the bloody time. 😅
 
 Right now the app supports giving _items_ (with _enchantments_) and applying _effects_.
 
